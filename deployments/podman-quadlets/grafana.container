@@ -1,0 +1,23 @@
+[Unit]
+Description=Grafana Dashboard for Reciprocal Clubs
+Wants=network-online.target prometheus.service
+After=network-online.target prometheus.service
+RequiresMountsFor=%t/containers
+
+[Container]
+Image=docker.io/grafana/grafana:latest
+ContainerName=reciprocal-grafana
+PublishPort=3000:3000
+Environment=GF_SECURITY_ADMIN_PASSWORD=admin
+Volume=reciprocal-grafana-data:/var/lib/grafana:Z
+# Volume=./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:Z
+# Volume=./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:Z
+# Note: Grafana configs need to be created first
+Network=reciprocal-clubs.network
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

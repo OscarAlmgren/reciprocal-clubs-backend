@@ -1,0 +1,429 @@
+version: '3.8'
+
+networks:
+  reciprocal-clubs:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  nats_data:
+  redis_data:
+  fabric_peer:
+  fabric_orderer:
+  fabric_ca:
+  prometheus_data:
+  grafana_data:
+
+services:
+  # Infrastructure Services
+  postgres:
+    image: postgres:15-alpine
+    container_name: reciprocal-postgres
+    environment:
+      POSTGRES_DB: reciprocal_clubs
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - reciprocal-clubs
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: reciprocal-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - reciprocal-clubs
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: reciprocal-nats
+    ports:
+      - "4222:4222"
+      - "6222:6222"
+      - "8222:8222"
+    command: >
+      --js
+      --sd /data
+      --cluster_name reciprocal-clubs
+      --cluster nats://0.0.0.0:6222
+      --routes nats://0.0.0.0:6222
+      --http_port 8222
+    volumes:
+      - nats_data:/data
+    networks:
+      - reciprocal-clubs
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Hyperledger Fabric Components
+  fabric-ca:
+    image: hyperledger/fabric-ca:1.5
+    container_name: reciprocal-fabric-ca
+    environment:
+      - FABRIC_CA_HOME=/etc/hyperledger/fabric-ca-server
+      - FABRIC_CA_SERVER_CA_NAME=ca-org1
+      - FABRIC_CA_SERVER_TLS_ENABLED=false
+      - FABRIC_CA_SERVER_PORT=7054
+    ports:
+      - "7054:7054"
+    command: sh -c 'fabric-ca-server start -b admin:adminpw -d'
+    volumes:
+      - fabric_ca:/etc/hyperledger/fabric-ca-server
+      - ./fabric/ca:/etc/hyperledger/fabric-ca-server-config
+    networks:
+      - reciprocal-clubs
+
+  fabric-orderer:
+    image: hyperledger/fabric-orderer:2.5
+    container_name: reciprocal-orderer
+    environment:
+      - FABRIC_LOGGING_SPEC=INFO
+      - ORDERER_GENERAL_LISTENADDRESS=0.0.0.0
+      - ORDERER_GENERAL_LISTENPORT=7050
+      - ORDERER_GENERAL_GENESISMETHOD=file
+      - ORDERER_GENERAL_GENESISFILE=/var/hyperledger/orderer/orderer.genesis.block
+      - ORDERER_GENERAL_LOCALMSPID=OrdererMSP
+      - ORDERER_GENERAL_LOCALMSPDIR=/var/hyperledger/orderer/msp
+      - ORDERER_GENERAL_TLS_ENABLED=false
+      - ORDERER_GENERAL_CLUSTER_CLIENTCERTIFICATE=/var/hyperledger/orderer/tls/server.crt
+      - ORDERER_GENERAL_CLUSTER_CLIENTPRIVATEKEY=/var/hyperledger/orderer/tls/server.key
+      - ORDERER_GENERAL_CLUSTER_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
+      - ORDERER_KAFKA_TOPIC_REPLICATIONFACTOR=1
+      - ORDERER_KAFKA_VERBOSE=true
+      - ORDERER_GENERAL_CLUSTER_SENDBUFFERSIZE=10
+    working_dir: /opt/gopath/src/github.com/hyperledger/fabric
+    command: orderer
+    volumes:
+      - fabric_orderer:/var/hyperledger/production/orderer
+      - ./fabric/config/genesis.block:/var/hyperledger/orderer/orderer.genesis.block
+      - ./fabric/crypto-config/ordererOrganizations/reciprocal-clubs.com/orderers/orderer.reciprocal-clubs.com/msp:/var/hyperledger/orderer/msp
+      - ./fabric/crypto-config/ordererOrganizations/reciprocal-clubs.com/orderers/orderer.reciprocal-clubs.com/tls:/var/hyperledger/orderer/tls
+    ports:
+      - "7050:7050"
+    networks:
+      - reciprocal-clubs
+    depends_on:
+      - fabric-ca
+
+  fabric-peer:
+    image: hyperledger/fabric-peer:2.5
+    container_name: reciprocal-peer0-org1
+    environment:
+      - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
+      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=reciprocal-clubs-backend_reciprocal-clubs
+      - FABRIC_LOGGING_SPEC=INFO
+      - CORE_PEER_TLS_ENABLED=false
+      - CORE_PEER_GOSSIP_USELEADERELECTION=true
+      - CORE_PEER_GOSSIP_ORGLEADER=false
+      - CORE_PEER_PROFILE_ENABLED=true
+      - CORE_PEER_TLS_CERT_FILE=/etc/hyperledger/fabric/tls/server.crt
+      - CORE_PEER_TLS_KEY_FILE=/etc/hyperledger/fabric/tls/server.key
+      - CORE_PEER_TLS_ROOTCERT_FILE=/etc/hyperledger/fabric/tls/ca.crt
+      - CORE_PEER_ID=peer0.org1.reciprocal-clubs.com
+      - CORE_PEER_ADDRESS=peer0.org1.reciprocal-clubs.com:7051
+      - CORE_PEER_LISTENADDRESS=0.0.0.0:7051
+      - CORE_PEER_CHAINCODEADDRESS=peer0.org1.reciprocal-clubs.com:7052
+      - CORE_PEER_CHAINCODELISTENADDRESS=0.0.0.0:7052
+      - CORE_PEER_GOSSIP_BOOTSTRAP=peer0.org1.reciprocal-clubs.com:7051
+      - CORE_PEER_GOSSIP_EXTERNALENDPOINT=peer0.org1.reciprocal-clubs.com:7051
+      - CORE_PEER_LOCALMSPID=Org1MSP
+    working_dir: /opt/gopath/src/github.com/hyperledger/fabric/peer
+    command: peer node start
+    volumes:
+      - /var/run/docker.sock:/host/var/run/docker.sock
+      - fabric_peer:/var/hyperledger/production
+      - ./fabric/crypto-config/peerOrganizations/org1.reciprocal-clubs.com/peers/peer0.org1.reciprocal-clubs.com/msp:/etc/hyperledger/fabric/msp
+      - ./fabric/crypto-config/peerOrganizations/org1.reciprocal-clubs.com/peers/peer0.org1.reciprocal-clubs.com/tls:/etc/hyperledger/fabric/tls
+    ports:
+      - "7051:7051"
+      - "7052:7052"
+    networks:
+      - reciprocal-clubs
+    depends_on:
+      - fabric-orderer
+
+  # Application Services
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    container_name: reciprocal-api-gateway
+    environment:
+      - API_GATEWAY_SERVICE_PORT=8080
+      - API_GATEWAY_SERVICE_GRPC_PORT=9090
+      - API_GATEWAY_DATABASE_HOST=postgres
+      - API_GATEWAY_DATABASE_PASSWORD=postgres
+      - API_GATEWAY_NATS_URL=nats://nats:4222
+      - API_GATEWAY_REDIS_HOST=redis
+      - API_GATEWAY_AUTH_JWT_SECRET=your-secret-key
+    ports:
+      - "8080:8080"
+      - "9080:9090"
+    networks:
+      - reciprocal-clubs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    container_name: reciprocal-auth-service
+    environment:
+      - AUTH_SERVICE_SERVICE_PORT=8081
+      - AUTH_SERVICE_SERVICE_GRPC_PORT=9091
+      - AUTH_SERVICE_DATABASE_HOST=postgres
+      - AUTH_SERVICE_DATABASE_PASSWORD=postgres
+      - AUTH_SERVICE_NATS_URL=nats://nats:4222
+      - AUTH_SERVICE_REDIS_HOST=redis
+      - AUTH_SERVICE_AUTH_JWT_SECRET=your-secret-key
+    ports:
+      - "8081:8081"
+      - "9081:9091"
+    networks:
+      - reciprocal-clubs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  member-service:
+    build:
+      context: .
+      dockerfile: services/member-service/Dockerfile
+    container_name: reciprocal-member-service
+    environment:
+      - MEMBER_SERVICE_SERVICE_PORT=8082
+      - MEMBER_SERVICE_SERVICE_GRPC_PORT=9092
+      - MEMBER_SERVICE_DATABASE_HOST=postgres
+      - MEMBER_SERVICE_DATABASE_PASSWORD=postgres
+      - MEMBER_SERVICE_NATS_URL=nats://nats:4222
+      - MEMBER_SERVICE_REDIS_HOST=redis
+    ports:
+      - "8082:8082"
+      - "9082:9092"
+    networks:
+      - reciprocal-clubs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+
+  reciprocal-service:
+    build:
+      context: .
+      dockerfile: services/reciprocal-service/Dockerfile
+    container_name: reciprocal-reciprocal-service
+    environment:
+      - RECIPROCAL_SERVICE_SERVICE_PORT=8083
+      - RECIPROCAL_SERVICE_SERVICE_GRPC_PORT=9093
+      - RECIPROCAL_SERVICE_DATABASE_HOST=postgres
+      - RECIPROCAL_SERVICE_DATABASE_PASSWORD=postgres
+      - RECIPROCAL_SERVICE_NATS_URL=nats://nats:4222
+      - RECIPROCAL_SERVICE_BLOCKCHAIN_PEER_ENDPOINT=fabric-peer:7051
+      - RECIPROCAL_SERVICE_BLOCKCHAIN_ORDERER_ENDPOINT=fabric-orderer:7050
+    ports:
+      - "8083:8083"
+      - "9083:9093"
+    networks:
+      - reciprocal-clubs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      fabric-peer:
+        condition: service_started
+
+  blockchain-service:
+    build:
+      context: .
+      dockerfile: services/blockchain-service/Dockerfile
+    container_name: reciprocal-blockchain-service
+    environment:
+      - BLOCKCHAIN_SERVICE_SERVICE_PORT=8084
+      - BLOCKCHAIN_SERVICE_SERVICE_GRPC_PORT=9094
+      - BLOCKCHAIN_SERVICE_DATABASE_HOST=postgres
+      - BLOCKCHAIN_SERVICE_DATABASE_PASSWORD=postgres
+      - BLOCKCHAIN_SERVICE_NATS_URL=nats://nats:4222
+      - BLOCKCHAIN_SERVICE_BLOCKCHAIN_PEER_ENDPOINT=fabric-peer:7051
+      - BLOCKCHAIN_SERVICE_BLOCKCHAIN_ORDERER_ENDPOINT=fabric-orderer:7050
+      - BLOCKCHAIN_SERVICE_BLOCKCHAIN_CA_ENDPOINT=fabric-ca:7054
+    ports:
+      - "8084:8084"
+      - "9084:9094"
+    networks:
+      - reciprocal-clubs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      fabric-peer:
+        condition: service_started
+      fabric-ca:
+        condition: service_started
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: services/notification-service/Dockerfile
+    container_name: reciprocal-notification-service
+    environment:
+      - NOTIFICATION_SERVICE_SERVICE_PORT=8085
+      - NOTIFICATION_SERVICE_SERVICE_GRPC_PORT=9095
+      - NOTIFICATION_SERVICE_DATABASE_HOST=postgres
+      - NOTIFICATION_SERVICE_DATABASE_PASSWORD=postgres
+      - NOTIFICATION_SERVICE_NATS_URL=nats://nats:4222
+      - NOTIFICATION_SERVICE_REDIS_HOST=redis
+      - NOTIFICATION_SERVICE_SMTP_HOST=mailhog
+      - NOTIFICATION_SERVICE_SMTP_PORT=1025
+    ports:
+      - "8085:8085"
+      - "9085:9095"
+    networks:
+      - reciprocal-clubs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  analytics-service:
+    build:
+      context: .
+      dockerfile: services/analytics-service/Dockerfile
+    container_name: reciprocal-analytics-service
+    environment:
+      - ANALYTICS_SERVICE_SERVICE_PORT=8086
+      - ANALYTICS_SERVICE_SERVICE_GRPC_PORT=9096
+      - ANALYTICS_SERVICE_DATABASE_HOST=postgres
+      - ANALYTICS_SERVICE_DATABASE_PASSWORD=postgres
+      - ANALYTICS_SERVICE_NATS_URL=nats://nats:4222
+      - ANALYTICS_SERVICE_REDIS_HOST=redis
+    ports:
+      - "8086:8086"
+      - "9086:9096"
+    networks:
+      - reciprocal-clubs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  governance-service:
+    build:
+      context: .
+      dockerfile: services/governance-service/Dockerfile
+    container_name: reciprocal-governance-service
+    environment:
+      - GOVERNANCE_SERVICE_SERVICE_PORT=8087
+      - GOVERNANCE_SERVICE_SERVICE_GRPC_PORT=9097
+      - GOVERNANCE_SERVICE_DATABASE_HOST=postgres
+      - GOVERNANCE_SERVICE_DATABASE_PASSWORD=postgres
+      - GOVERNANCE_SERVICE_NATS_URL=nats://nats:4222
+      - GOVERNANCE_SERVICE_BLOCKCHAIN_PEER_ENDPOINT=fabric-peer:7051
+      - GOVERNANCE_SERVICE_BLOCKCHAIN_ORDERER_ENDPOINT=fabric-orderer:7050
+    ports:
+      - "8087:8087"
+      - "9087:9097"
+    networks:
+      - reciprocal-clubs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      fabric-peer:
+        condition: service_started
+
+  # Development and Testing Tools
+  mailhog:
+    image: mailhog/mailhog
+    container_name: reciprocal-mailhog
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+    networks:
+      - reciprocal-clubs
+
+  # Monitoring and Observability
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: reciprocal-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - reciprocal-clubs
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: reciprocal-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - reciprocal-clubs
+    depends_on:
+      - prometheus
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.50
+    container_name: reciprocal-jaeger
+    ports:
+      - "16686:16686"
+      - "14268:14268"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    networks:
+      - reciprocal-clubs

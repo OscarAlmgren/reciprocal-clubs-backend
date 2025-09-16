@@ -1,0 +1,44 @@
+[Unit]
+Description=Hyperledger Fabric Peer for Reciprocal Clubs
+Wants=network-online.target fabric-orderer.service
+After=network-online.target fabric-orderer.service
+RequiresMountsFor=%t/containers
+
+[Container]
+Image=docker.io/hyperledger/fabric-peer:2.5
+ContainerName=reciprocal-peer0-org1
+WorkingDir=/opt/gopath/src/github.com/hyperledger/fabric/peer
+Environment=CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
+Environment=CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=reciprocal-clubs
+Environment=FABRIC_LOGGING_SPEC=INFO
+Environment=CORE_PEER_TLS_ENABLED=false
+Environment=CORE_PEER_GOSSIP_USELEADERELECTION=true
+Environment=CORE_PEER_GOSSIP_ORGLEADER=false
+Environment=CORE_PEER_PROFILE_ENABLED=true
+Environment=CORE_PEER_TLS_CERT_FILE=/etc/hyperledger/fabric/tls/server.crt
+Environment=CORE_PEER_TLS_KEY_FILE=/etc/hyperledger/fabric/tls/server.key
+Environment=CORE_PEER_TLS_ROOTCERT_FILE=/etc/hyperledger/fabric/tls/ca.crt
+Environment=CORE_PEER_ID=peer0.org1.reciprocal-clubs.com
+Environment=CORE_PEER_ADDRESS=peer0.org1.reciprocal-clubs.com:7051
+Environment=CORE_PEER_LISTENADDRESS=0.0.0.0:7051
+Environment=CORE_PEER_CHAINCODEADDRESS=peer0.org1.reciprocal-clubs.com:7052
+Environment=CORE_PEER_CHAINCODELISTENADDRESS=0.0.0.0:7052
+Environment=CORE_PEER_GOSSIP_BOOTSTRAP=peer0.org1.reciprocal-clubs.com:7051
+Environment=CORE_PEER_GOSSIP_EXTERNALENDPOINT=peer0.org1.reciprocal-clubs.com:7051
+Environment=CORE_PEER_LOCALMSPID=Org1MSP
+PublishPort=7051:7051
+PublishPort=7052:7052
+Volume=/var/run/docker.sock:/host/var/run/docker.sock:Z
+Volume=reciprocal-fabric-peer:/var/hyperledger/production:Z
+# Volume=./fabric/crypto-config/peerOrganizations/org1.reciprocal-clubs.com/peers/peer0.org1.reciprocal-clubs.com/msp:/etc/hyperledger/fabric/msp:Z
+# Volume=./fabric/crypto-config/peerOrganizations/org1.reciprocal-clubs.com/peers/peer0.org1.reciprocal-clubs.com/tls:/etc/hyperledger/fabric/tls:Z
+# Note: Fabric crypto-config needs to be generated first
+Network=reciprocal-clubs.network
+Exec=peer node start
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,27 @@
+[Unit]
+Description=Blockchain Service for Reciprocal Clubs
+Wants=network-online.target postgres.service nats.service fabric-peer.service fabric-ca.service
+After=network-online.target postgres.service nats.service fabric-peer.service fabric-ca.service
+RequiresMountsFor=%t/containers
+
+[Container]
+Image=localhost/reciprocal-blockchain-service:latest
+ContainerName=reciprocal-blockchain-service
+Environment=BLOCKCHAIN_SERVICE_SERVICE_PORT=8084
+Environment=BLOCKCHAIN_SERVICE_SERVICE_GRPC_PORT=9094
+Environment=BLOCKCHAIN_SERVICE_DATABASE_HOST=reciprocal-postgres
+Environment=BLOCKCHAIN_SERVICE_DATABASE_PASSWORD=postgres
+Environment=BLOCKCHAIN_SERVICE_NATS_URL=nats://reciprocal-nats:4222
+Environment=BLOCKCHAIN_SERVICE_BLOCKCHAIN_PEER_ENDPOINT=reciprocal-peer0-org1:7051
+Environment=BLOCKCHAIN_SERVICE_BLOCKCHAIN_ORDERER_ENDPOINT=reciprocal-orderer:7050
+Environment=BLOCKCHAIN_SERVICE_BLOCKCHAIN_CA_ENDPOINT=reciprocal-fabric-ca:7054
+PublishPort=8084:8084
+PublishPort=9084:9094
+Network=reciprocal-clubs.network
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

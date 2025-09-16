@@ -1,0 +1,75 @@
+database:
+  host: hanko-postgres
+  port: 5432
+  user: hanko
+  password: hanko
+  database: hanko
+
+server:
+  public:
+    address: 0.0.0.0:8000
+    cors:
+      enabled: true
+      allow_origins:
+        - "http://localhost:3000"
+        - "http://localhost:8080"
+      allow_methods:
+        - POST
+        - GET
+        - PUT
+        - DELETE
+      allow_headers:
+        - Content-Type
+        - Authorization
+      allow_credentials: true
+
+  admin:
+    address: 0.0.0.0:8001
+
+service:
+  name: "Auth Service Integration"
+
+webauthn:
+  relying_party:
+    id: "localhost"
+    display_name: "Reciprocal Clubs Auth"
+    origins:
+      - "http://localhost:3000"
+      - "http://localhost:8080"
+  timeout: 300000
+
+session:
+  enable_auth_token_header: true
+  auth_token_header_name: "X-Auth-Token"
+  lifespan: "1h"
+  cookie:
+    name: "hanko"
+    domain: "localhost"
+    http_only: true
+    same_site: "lax"
+    secure: false
+    path: "/"
+
+rate_limiter:
+  enabled: false
+
+webhooks:
+  enabled: false
+
+emails:
+  require_verification: false
+
+account_recovery:
+  enabled: false
+
+third_party:
+  providers:
+    google:
+      enabled: false
+    github:
+      enabled: false
+    apple:
+      enabled: false
+
+log:
+  level: info

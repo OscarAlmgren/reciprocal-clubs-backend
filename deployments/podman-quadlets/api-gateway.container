@@ -1,0 +1,26 @@
+[Unit]
+Description=API Gateway for Reciprocal Clubs
+Wants=network-online.target postgres.service nats.service redis.service
+After=network-online.target postgres.service nats.service redis.service
+RequiresMountsFor=%t/containers
+
+[Container]
+Image=localhost/reciprocal-api-gateway:latest
+ContainerName=reciprocal-api-gateway
+Environment=API_GATEWAY_SERVICE_PORT=8080
+Environment=API_GATEWAY_SERVICE_GRPC_PORT=9090
+Environment=API_GATEWAY_DATABASE_HOST=reciprocal-postgres
+Environment=API_GATEWAY_DATABASE_PASSWORD=postgres
+Environment=API_GATEWAY_NATS_URL=nats://reciprocal-nats:4222
+Environment=API_GATEWAY_REDIS_HOST=reciprocal-redis
+Environment=API_GATEWAY_AUTH_JWT_SECRET=your-secret-key
+PublishPort=8080:8080
+PublishPort=9080:9090
+Network=reciprocal-clubs.network
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

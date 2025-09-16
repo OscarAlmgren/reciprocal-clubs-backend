@@ -1,0 +1,25 @@
+[Unit]
+Description=Analytics Service for Reciprocal Clubs
+Wants=network-online.target postgres.service nats.service redis.service
+After=network-online.target postgres.service nats.service redis.service
+RequiresMountsFor=%t/containers
+
+[Container]
+Image=localhost/reciprocal-analytics-service:latest
+ContainerName=reciprocal-analytics-service
+Environment=ANALYTICS_SERVICE_SERVICE_PORT=8086
+Environment=ANALYTICS_SERVICE_SERVICE_GRPC_PORT=9096
+Environment=ANALYTICS_SERVICE_DATABASE_HOST=reciprocal-postgres
+Environment=ANALYTICS_SERVICE_DATABASE_PASSWORD=postgres
+Environment=ANALYTICS_SERVICE_NATS_URL=nats://reciprocal-nats:4222
+Environment=ANALYTICS_SERVICE_REDIS_HOST=reciprocal-redis
+PublishPort=8086:8086
+PublishPort=9086:9096
+Network=reciprocal-clubs.network
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

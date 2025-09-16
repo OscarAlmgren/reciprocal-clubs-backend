@@ -1,0 +1,26 @@
+[Unit]
+Description=Governance Service for Reciprocal Clubs
+Wants=network-online.target postgres.service nats.service fabric-peer.service
+After=network-online.target postgres.service nats.service fabric-peer.service
+RequiresMountsFor=%t/containers
+
+[Container]
+Image=localhost/reciprocal-governance-service:latest
+ContainerName=reciprocal-governance-service
+Environment=GOVERNANCE_SERVICE_SERVICE_PORT=8087
+Environment=GOVERNANCE_SERVICE_SERVICE_GRPC_PORT=9097
+Environment=GOVERNANCE_SERVICE_DATABASE_HOST=reciprocal-postgres
+Environment=GOVERNANCE_SERVICE_DATABASE_PASSWORD=postgres
+Environment=GOVERNANCE_SERVICE_NATS_URL=nats://reciprocal-nats:4222
+Environment=GOVERNANCE_SERVICE_BLOCKCHAIN_PEER_ENDPOINT=reciprocal-peer0-org1:7051
+Environment=GOVERNANCE_SERVICE_BLOCKCHAIN_ORDERER_ENDPOINT=reciprocal-orderer:7050
+PublishPort=8087:8087
+PublishPort=9087:9097
+Network=reciprocal-clubs.network
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

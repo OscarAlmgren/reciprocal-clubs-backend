@@ -1,0 +1,27 @@
+[Unit]
+Description=Notification Service for Reciprocal Clubs
+Wants=network-online.target postgres.service nats.service redis.service mailhog.service
+After=network-online.target postgres.service nats.service redis.service mailhog.service
+RequiresMountsFor=%t/containers
+
+[Container]
+Image=localhost/reciprocal-notification-service:latest
+ContainerName=reciprocal-notification-service
+Environment=NOTIFICATION_SERVICE_SERVICE_PORT=8085
+Environment=NOTIFICATION_SERVICE_SERVICE_GRPC_PORT=9095
+Environment=NOTIFICATION_SERVICE_DATABASE_HOST=reciprocal-postgres
+Environment=NOTIFICATION_SERVICE_DATABASE_PASSWORD=postgres
+Environment=NOTIFICATION_SERVICE_NATS_URL=nats://reciprocal-nats:4222
+Environment=NOTIFICATION_SERVICE_REDIS_HOST=reciprocal-redis
+Environment=NOTIFICATION_SERVICE_SMTP_HOST=reciprocal-mailhog
+Environment=NOTIFICATION_SERVICE_SMTP_PORT=1025
+PublishPort=8085:8085
+PublishPort=9085:9095
+Network=reciprocal-clubs.network
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

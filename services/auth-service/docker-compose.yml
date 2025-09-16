@@ -1,0 +1,157 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database
+  postgres:
+    image: postgres:15-alpine
+    container_name: auth-service-postgres
+    environment:
+      POSTGRES_DB: auth_service
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - auth-network
+
+  # NATS message broker
+  nats:
+    image: nats:2.10-alpine
+    container_name: auth-service-nats
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: [
+      "--jetstream", 
+      "--store_dir", "/data",
+      "--http_port", "8222"
+    ]
+    volumes:
+      - nats_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - auth-network
+
+  # Hanko authentication service
+  hanko:
+    image: ghcr.io/teamhanko/hanko:latest
+    container_name: auth-service-hanko
+    environment:
+      - DATABASE_URL=postgres://hanko:hanko@hanko-postgres:5432/hanko?sslmode=disable
+      - HANKO_FRONTEND_URL=http://localhost:3000
+      - HANKO_BACKEND_URL=http://localhost:8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./hanko/config.yaml:/etc/hanko/config.yaml
+    depends_on:
+      hanko-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8000/.well-known/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - auth-network
+
+  # PostgreSQL database for Hanko
+  hanko-postgres:
+    image: postgres:15-alpine
+    container_name: auth-service-hanko-postgres
+    environment:
+      POSTGRES_DB: hanko
+      POSTGRES_USER: hanko
+      POSTGRES_PASSWORD: hanko
+    ports:
+      - "5433:5432"
+    volumes:
+      - hanko_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hanko"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - auth-network
+
+  # Auth Service
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auth-service
+    environment:
+      - AUTH_SERVICE_SERVER_ENVIRONMENT=development
+      - AUTH_SERVICE_DATABASE_HOST=postgres
+      - AUTH_SERVICE_DATABASE_PORT=5432
+      - AUTH_SERVICE_DATABASE_USERNAME=postgres
+      - AUTH_SERVICE_DATABASE_PASSWORD=postgres
+      - AUTH_SERVICE_DATABASE_DATABASE=auth_service
+      - AUTH_SERVICE_HANKO_URL=http://hanko:8000
+      - AUTH_SERVICE_HANKO_API_KEY=${HANKO_API_KEY:-development-key}
+      - AUTH_SERVICE_HANKO_PROJECT_ID=${HANKO_PROJECT_ID:-development-project}
+      - AUTH_SERVICE_NATS_URL=nats://nats:4222
+      - AUTH_SERVICE_AUTH_TOKEN_SECRET_KEY=${AUTH_TOKEN_SECRET_KEY:-development-secret-key-that-is-at-least-32-characters-long}
+    ports:
+      - "8080:8080"  # HTTP API
+      - "8081:8081"  # gRPC API
+      - "9090:9090"  # Metrics
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      hanko:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - auth-network
+    restart: unless-stopped
+
+  # Prometheus for metrics collection (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: auth-service-prometheus
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    depends_on:
+      - auth-service
+    networks:
+      - auth-network
+
+volumes:
+  postgres_data:
+  hanko_postgres_data:
+  nats_data:
+  prometheus_data:
+
+networks:
+  auth-network:
+    driver: bridge

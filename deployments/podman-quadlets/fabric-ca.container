@@ -1,0 +1,25 @@
+[Unit]
+Description=Hyperledger Fabric CA for Reciprocal Clubs
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=%t/containers
+
+[Container]
+Image=docker.io/hyperledger/fabric-ca:1.5
+ContainerName=reciprocal-fabric-ca
+Environment=FABRIC_CA_HOME=/etc/hyperledger/fabric-ca-server
+Environment=FABRIC_CA_SERVER_CA_NAME=ca-org1
+Environment=FABRIC_CA_SERVER_TLS_ENABLED=false
+Environment=FABRIC_CA_SERVER_PORT=7054
+PublishPort=7054:7054
+Volume=reciprocal-fabric-ca:/etc/hyperledger/fabric-ca-server:Z
+# Volume=./fabric/ca:/etc/hyperledger/fabric-ca-server-config:Z
+# Note: Fabric CA config needs to be generated first
+Exec=sh -c 'fabric-ca-server start -b admin:adminpw -d'
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

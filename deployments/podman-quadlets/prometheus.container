@@ -1,0 +1,22 @@
+[Unit]
+Description=Prometheus Monitoring for Reciprocal Clubs
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=%t/containers
+
+[Container]
+Image=docker.io/prom/prometheus:latest
+ContainerName=reciprocal-prometheus
+PublishPort=9090:9090
+# Volume=./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:Z
+# Note: Prometheus config needs to be created first
+Volume=reciprocal-prometheus-data:/prometheus:Z
+Network=reciprocal-clubs.network
+Exec=--config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus --web.console.libraries=/etc/prometheus/console_libraries --web.console.templates=/etc/prometheus/consoles --storage.tsdb.retention.time=200h --web.enable-lifecycle
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

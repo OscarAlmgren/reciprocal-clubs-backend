@@ -1,0 +1,39 @@
+[Unit]
+Description=Hyperledger Fabric Orderer for Reciprocal Clubs
+Wants=network-online.target fabric-ca.service
+After=network-online.target fabric-ca.service
+RequiresMountsFor=%t/containers
+
+[Container]
+Image=docker.io/hyperledger/fabric-orderer:2.5
+ContainerName=reciprocal-orderer
+WorkingDir=/opt/gopath/src/github.com/hyperledger/fabric
+Environment=FABRIC_LOGGING_SPEC=INFO
+Environment=ORDERER_GENERAL_LISTENADDRESS=0.0.0.0
+Environment=ORDERER_GENERAL_LISTENPORT=7050
+Environment=ORDERER_GENERAL_GENESISMETHOD=file
+Environment=ORDERER_GENERAL_GENESISFILE=/var/hyperledger/orderer/orderer.genesis.block
+Environment=ORDERER_GENERAL_LOCALMSPID=OrdererMSP
+Environment=ORDERER_GENERAL_LOCALMSPDIR=/var/hyperledger/orderer/msp
+Environment=ORDERER_GENERAL_TLS_ENABLED=false
+Environment=ORDERER_GENERAL_CLUSTER_CLIENTCERTIFICATE=/var/hyperledger/orderer/tls/server.crt
+Environment=ORDERER_GENERAL_CLUSTER_CLIENTPRIVATEKEY=/var/hyperledger/orderer/tls/server.key
+Environment=ORDERER_GENERAL_CLUSTER_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
+Environment=ORDERER_KAFKA_TOPIC_REPLICATIONFACTOR=1
+Environment=ORDERER_KAFKA_VERBOSE=true
+Environment=ORDERER_GENERAL_CLUSTER_SENDBUFFERSIZE=10
+PublishPort=7050:7050
+Volume=reciprocal-fabric-orderer:/var/hyperledger/production/orderer:Z
+# Volume=./fabric/config/genesis.block:/var/hyperledger/orderer/orderer.genesis.block:Z
+# Volume=./fabric/crypto-config/ordererOrganizations/reciprocal-clubs.com/orderers/orderer.reciprocal-clubs.com/msp:/var/hyperledger/orderer/msp:Z
+# Volume=./fabric/crypto-config/ordererOrganizations/reciprocal-clubs.com/orderers/orderer.reciprocal-clubs.com/tls:/var/hyperledger/orderer/tls:Z
+# Note: Fabric crypto-config needs to be generated first
+Network=reciprocal-clubs.network
+Exec=orderer
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

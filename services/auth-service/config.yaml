@@ -1,0 +1,72 @@
+server:
+  environment: "development"
+  http_port: 8080
+  grpc_port: 8081
+  read_timeout: "30s"
+  write_timeout: "30s"
+  idle_timeout: "120s"
+  shutdown_grace: "30s"
+  enable_cors: true
+  trusted_proxies: []
+
+database:
+  host: "localhost"
+  port: 5432
+  username: "postgres"
+  password: "postgres"
+  database: "auth_service"
+  ssl_mode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 25
+  conn_max_lifetime: "5m"
+  conn_max_idle_time: "5m"
+  auto_migrate: true
+
+hanko:
+  enabled: true
+  url: "http://localhost:8000"
+  api_key: "${HANKO_API_KEY}"
+  project_id: "${HANKO_PROJECT_ID}"
+  timeout: "30s"
+  max_retries: 3
+  webhook_url: "http://localhost:8080/webhook/hanko"
+  use_mock: false
+
+nats:
+  url: "nats://localhost:4222"
+  cluster_id: "reciprocal-clubs"
+  client_id: "auth-service"
+  timeout: "30s"
+  max_reconnect: 10
+  reconnect_wait: "2s"
+  ping_interval: "20s"
+  max_pings_out: 2
+  subject:
+    user_events: "users.events"
+    auth_events: "auth.events"
+    audit_logs: "audit.logs"
+
+auth:
+  session_duration: "24h"
+  token_secret_key: "${AUTH_TOKEN_SECRET_KEY}"
+  password_min_length: 8
+  max_login_attempts: 5
+  login_attempt_window: "15m"
+  account_lockout_duration: "30m"
+
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
+  file: ""
+  max_size: 100
+  max_backups: 3
+  max_age: 28
+  compress: true
+  enable_caller: true
+
+metrics:
+  enabled: true
+  port: 9090
+  path: "/metrics"
+  namespace: "auth_service"

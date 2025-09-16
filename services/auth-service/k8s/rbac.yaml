@@ -1,0 +1,183 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: auth-service
+  namespace: auth-service
+  labels:
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/component: serviceaccount
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: auth-service
+  name: auth-service-role
+  labels:
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/component: rbac
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: auth-service-rolebinding
+  namespace: auth-service
+  labels:
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/component: rbac
+subjects:
+- kind: ServiceAccount
+  name: auth-service
+  namespace: auth-service
+roleRef:
+  kind: Role
+  name: auth-service-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# Persistent Volume Claims
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: auth-service
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hanko-postgres-pvc
+  namespace: auth-service
+  labels:
+    app.kubernetes.io/name: hanko-postgres
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nats-pvc
+  namespace: auth-service
+  labels:
+    app.kubernetes.io/name: nats
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: standard
+---
+# Hanko Configuration ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hanko-config
+  namespace: auth-service
+  labels:
+    app.kubernetes.io/name: hanko
+    app.kubernetes.io/component: config
+data:
+  config.yaml: |
+    database:
+      host: auth-service-hanko-postgres
+      port: 5432
+      user: hanko
+      password: hanko-password
+      database: hanko
+
+    server:
+      public:
+        address: 0.0.0.0:8000
+        cors:
+          enabled: true
+          allow_origins:
+            - "https://your-frontend-domain.com"
+          allow_methods:
+            - POST
+            - GET
+            - PUT
+            - DELETE
+          allow_headers:
+            - Content-Type
+            - Authorization
+          allow_credentials: true
+
+      admin:
+        address: 0.0.0.0:8001
+
+    service:
+      name: "Reciprocal Clubs Auth"
+
+    webauthn:
+      relying_party:
+        id: "your-domain.com"
+        display_name: "Reciprocal Clubs"
+        origins:
+          - "https://your-frontend-domain.com"
+      timeout: 300000
+
+    session:
+      enable_auth_token_header: true
+      auth_token_header_name: "X-Auth-Token"
+      lifespan: "24h"
+      cookie:
+        name: "hanko"
+        domain: "your-domain.com"
+        http_only: true
+        same_site: "lax"
+        secure: true
+        path: "/"
+
+    rate_limiter:
+      enabled: true
+
+    webhooks:
+      enabled: true
+      hooks:
+        - callback: "http://auth-service:8080/webhook/hanko"
+          events:
+            - "user.created"
+            - "user.updated"
+            - "user.deleted"
+            - "session.created"
+            - "session.expired"
+
+    emails:
+      require_verification: false
+
+    account_recovery:
+      enabled: false
+
+    third_party:
+      providers:
+        google:
+          enabled: false
+        github:
+          enabled: false
+        apple:
+          enabled: false
+
+    log:
+      level: info

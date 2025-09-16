@@ -1,0 +1,85 @@
+# Documentation
+*.md
+docs/
+*.txt
+LICENSE
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Editor and IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build artifacts
+bin/
+dist/
+build/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test files
+*_test.go
+testdata/
+*.test
+coverage.txt
+coverage.out
+coverage.html
+
+# Development files
+.env
+.env.local
+.env.test
+docker-compose.override.yml
+
+# Temporary files
+tmp/
+temp/
+*.log
+*.pid
+*.seed
+*.pid.lock
+
+# Node modules (if any frontend assets)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Deployment files (exclude from builds)
+deployments/
+k8s/
+charts/
+
+# Database files
+*.db
+*.sqlite
+
+# Monitoring and metrics
+prometheus.yml
+grafana/
+
+# Scripts that aren't needed in container
+scripts/
+tools/
+
+# Examples and samples
+examples/
+samples/

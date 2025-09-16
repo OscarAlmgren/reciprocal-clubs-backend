@@ -1,0 +1,26 @@
+[Unit]
+Description=NATS Message Bus for Reciprocal Clubs
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=%t/containers
+
+[Container]
+Image=docker.io/library/nats:2.10-alpine
+ContainerName=reciprocal-nats
+PublishPort=4222:4222
+PublishPort=6222:6222
+PublishPort=8222:8222
+Volume=reciprocal-nats-data:/data:Z
+Network=reciprocal-clubs.network
+Exec=--js --sd /data --server_name reciprocal-nats-server --cluster_name reciprocal-clubs --cluster nats://0.0.0.0:6222 --routes nats://0.0.0.0:6222 --http_port 8222
+HealthCmd=wget --no-verbose --tries=1 --spider http://localhost:8222/healthz
+HealthInterval=10s
+HealthTimeout=5s
+HealthRetries=5
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

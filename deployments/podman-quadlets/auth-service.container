@@ -1,0 +1,26 @@
+[Unit]
+Description=Auth Service for Reciprocal Clubs
+Wants=network-online.target postgres.service nats.service redis.service
+After=network-online.target postgres.service nats.service redis.service
+RequiresMountsFor=%t/containers
+
+[Container]
+Image=localhost/reciprocal-auth-service:latest
+ContainerName=reciprocal-auth-service
+Environment=AUTH_SERVICE_SERVICE_PORT=8081
+Environment=AUTH_SERVICE_SERVICE_GRPC_PORT=9091
+Environment=AUTH_SERVICE_DATABASE_HOST=reciprocal-postgres
+Environment=AUTH_SERVICE_DATABASE_PASSWORD=postgres
+Environment=AUTH_SERVICE_NATS_URL=nats://reciprocal-nats:4222
+Environment=AUTH_SERVICE_REDIS_HOST=reciprocal-redis
+Environment=AUTH_SERVICE_AUTH_JWT_SECRET=your-secret-key
+PublishPort=8081:8081
+PublishPort=9081:9091
+Network=reciprocal-clubs.network
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

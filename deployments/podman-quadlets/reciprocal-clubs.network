@@ -1,0 +1,8 @@
+[Network]
+NetworkName=reciprocal-clubs
+Driver=bridge
+Internal=false
+IPv6=false
+
+[Install]
+WantedBy=default.target

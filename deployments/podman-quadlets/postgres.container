@@ -1,0 +1,28 @@
+[Unit]
+Description=PostgreSQL Database for Reciprocal Clubs
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=%t/containers
+
+[Container]
+Image=docker.io/library/postgres:15-alpine
+ContainerName=reciprocal-postgres
+Environment=POSTGRES_DB=reciprocal_clubs
+Environment=POSTGRES_USER=postgres
+Environment=POSTGRES_PASSWORD=postgres
+PublishPort=5432:5432
+Volume=reciprocal-postgres-data:/var/lib/postgresql/data:Z
+# Volume=%PROJECT_ROOT%/scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:Z
+# Note: Add init script volume if needed
+Network=reciprocal-clubs.network
+HealthCmd=pg_isready -U postgres
+HealthInterval=10s
+HealthTimeout=5s
+HealthRetries=5
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target
