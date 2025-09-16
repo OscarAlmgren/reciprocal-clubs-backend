@@ -1,6 +1,6 @@
 module reciprocal-clubs-backend/pkg/shared/database
 
-go 1.21
+go 1.25
 
 require (
 	gorm.io/driver/postgres v1.5.4
