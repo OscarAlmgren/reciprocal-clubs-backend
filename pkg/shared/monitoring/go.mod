@@ -1,6 +1,6 @@
 module reciprocal-clubs-backend/pkg/shared/monitoring
 
-go 1.21
+go 1.25
 
 require github.com/prometheus/client_golang v1.17.0
 

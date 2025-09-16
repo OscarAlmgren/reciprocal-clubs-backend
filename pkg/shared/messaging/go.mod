@@ -1,6 +1,6 @@
 module reciprocal-clubs-backend/pkg/shared/messaging
 
-go 1.21
+go 1.25
 
 require github.com/nats-io/nats.go v1.31.0
 
