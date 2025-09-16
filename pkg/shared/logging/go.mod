@@ -1,6 +1,6 @@
 module reciprocal-clubs-backend/pkg/shared/logging
 
-go 1.21
+go 1.25
 
 require github.com/rs/zerolog v1.34.0
 

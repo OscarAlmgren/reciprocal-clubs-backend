@@ -30,7 +30,7 @@ This system consists of 8 microservices designed for scalability, maintainabilit
 
 ## Technology Stack
 
-- **Language**: Go 1.21+
+- **Language**: Go 1.25+
 - **GraphQL**: gqlgen for schema-first development
 - **Database**: PostgreSQL with GORM ORM
 - **Message Queue**: NATS for event-driven architecture
@@ -110,7 +110,7 @@ reciprocal-clubs-backend/
 
 ### Prerequisites
 
-- Go 1.21 or higher
+- Go 1.25 or higher
 - PostgreSQL 13+
 - NATS Server
 - Redis (optional, for caching)
