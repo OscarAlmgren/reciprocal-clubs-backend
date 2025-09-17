@@ -371,7 +371,7 @@ spec:
 
 ### Core Technologies
 
-**Backend Language**: Go 1.21+
+**Backend Language**: Go 1.25+
 - **Rationale**: Performance, concurrency, strong typing
 - **Key Libraries**: gRPC, GORM, testify, zerolog
 

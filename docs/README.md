@@ -150,7 +150,7 @@ Client → GraphQL API → Service Layer → Repository Layer → Database
 - **Documentation**: Code documentation for all public APIs
 
 ### 🔧 **Tools & Technologies**
-- **Language**: Go 1.21+
+- **Language**: Go 1.25+
 - **API**: GraphQL with gqlgen
 - **Database**: PostgreSQL with GORM
 - **Messaging**: NATS for event-driven architecture

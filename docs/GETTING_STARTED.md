@@ -22,7 +22,7 @@ Before you begin, ensure you have the following installed on your machine:
 - **Git** (version 2.20+)
 - **Docker** (version 20.10+) and **Docker Compose** (version 2.0+)
 - **Podman** (version 4.0+) - *Alternative to Docker*
-- **Go** (version 1.21+)
+- **Go** (version 1.25+)
 - **Node.js** (version 18+) and **npm** (version 8+)
 - **PostgreSQL** (version 14+)
 - **Redis** (version 7.0+)
