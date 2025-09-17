@@ -363,8 +363,8 @@ func (r *AuthRepository) GetUserPermissions(ctx context.Context, clubID, userID 
 		FROM permissions p
 		JOIN role_permissions rp ON p.id = rp.permission_id
 		JOIN user_roles ur ON rp.role_id = ur.role_id
-		WHERE ur.user_id = ? 
-		  AND ur.is_active = true 
+		WHERE ur.user_id = ?
+		  AND ur.is_active = true
 		  AND (ur.expires_at IS NULL OR ur.expires_at > ?)
 		  AND p.club_id = ?
 	`, userID, time.Now(), clubID).Scan(&permissions).Error; err != nil {
