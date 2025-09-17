@@ -23,7 +23,7 @@ mkdir -p "$SERVICE_DIR"/{cmd,internal/{handlers/{http,grpc},models,repository,se
 cat > "$SERVICE_DIR/go.mod" << EOF
 module reciprocal-clubs-backend/services/$SERVICE_NAME
 
-go 1.21
+go 1.25
 
 require (
 	github.com/golang/protobuf v1.5.3
@@ -83,7 +83,7 @@ import (
 	"reciprocal-clubs-backend/pkg/shared/logging"
 	"reciprocal-clubs-backend/pkg/shared/messaging"
 	"reciprocal-clubs-backend/pkg/shared/monitoring"
-	
+
 	grpcHandlers "reciprocal-clubs-backend/services/$SERVICE_NAME/internal/handlers/grpc"
 	httpHandlers "reciprocal-clubs-backend/services/$SERVICE_NAME/internal/handlers/http"
 	"reciprocal-clubs-backend/services/$SERVICE_NAME/internal/models"
@@ -241,7 +241,7 @@ EOF
 
 # Create Dockerfile
 cat > "$SERVICE_DIR/Dockerfile" << EOF
-FROM golang:1.21-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 COPY go.mod go.sum ./
@@ -260,7 +260,7 @@ CMD ["/main"]
 EOF
 
 echo "Service $SERVICE_NAME created successfully!"
-echo "HTTP Port: $HTTP_PORT"  
+echo "HTTP Port: $HTTP_PORT"
 echo "gRPC Port: $GRPC_PORT"
 echo ""
 echo "Next steps:"
