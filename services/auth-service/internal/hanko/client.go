@@ -139,10 +139,12 @@ func (c *HankoClient) CreateUser(ctx context.Context, email string) (*HankoUser,
 		return nil, fmt.Errorf("failed to create user in Hanko: %w", err)
 	}
 
-	c.logger.Info("User created in Hanko", map[string]interface{}{
-		"hanko_user_id": resp.User.ID,
-		"email":         resp.User.Email,
-	})
+	if c.logger != nil {
+		c.logger.Info("User created in Hanko", map[string]interface{}{
+			"hanko_user_id": resp.User.ID,
+			"email":         resp.User.Email,
+		})
+	}
 
 	return &resp.User, nil
 }
@@ -192,9 +194,11 @@ func (c *HankoClient) InitiatePasskeyRegistration(ctx context.Context, userID st
 		return nil, fmt.Errorf("failed to initiate passkey registration: %w", err)
 	}
 
-	c.logger.Info("Passkey registration initiated", map[string]interface{}{
-		"user_id": userID,
-	})
+	if c.logger != nil {
+		c.logger.Info("Passkey registration initiated", map[string]interface{}{
+			"user_id": userID,
+		})
+	}
 
 	return &resp, nil
 }
@@ -210,9 +214,11 @@ func (c *HankoClient) InitiatePasskeyAuthentication(ctx context.Context, userEma
 		return nil, fmt.Errorf("failed to initiate passkey authentication: %w", err)
 	}
 
-	c.logger.Info("Passkey authentication initiated", map[string]interface{}{
-		"user_email": userEmail,
-	})
+	if c.logger != nil {
+		c.logger.Info("Passkey authentication initiated", map[string]interface{}{
+			"user_email": userEmail,
+		})
+	}
 
 	return &resp, nil
 }
@@ -229,17 +235,19 @@ func (c *HankoClient) VerifyPasskey(ctx context.Context, userID string, credenti
 		return nil, fmt.Errorf("failed to verify passkey: %w", err)
 	}
 
-	if resp.Success {
-		c.logger.Info("Passkey authentication successful", map[string]interface{}{
-			"user_id":    userID,
-			"session_id": resp.Session.ID,
-		})
-	} else {
-		c.logger.Warn("Passkey authentication failed", map[string]interface{}{
-			"user_id":      userID,
-			"error_code":   resp.ErrorCode,
-			"error_detail": resp.ErrorDetail,
-		})
+	if c.logger != nil {
+		if resp.Success {
+			c.logger.Info("Passkey authentication successful", map[string]interface{}{
+				"user_id":    userID,
+				"session_id": resp.Session.ID,
+			})
+		} else {
+			c.logger.Warn("Passkey authentication failed", map[string]interface{}{
+				"user_id":      userID,
+				"error_code":   resp.ErrorCode,
+				"error_detail": resp.ErrorDetail,
+			})
+		}
 	}
 
 	return &resp, nil
@@ -251,9 +259,11 @@ func (c *HankoClient) InvalidateSession(ctx context.Context, sessionID string) e
 		return fmt.Errorf("failed to invalidate session: %w", err)
 	}
 
-	c.logger.Info("Session invalidated", map[string]interface{}{
-		"session_id": sessionID,
-	})
+	if c.logger != nil {
+		c.logger.Info("Session invalidated", map[string]interface{}{
+			"session_id": sessionID,
+		})
+	}
 
 	return nil
 }
@@ -264,9 +274,11 @@ func (c *HankoClient) DeleteUser(ctx context.Context, userID string) error {
 		return fmt.Errorf("failed to delete user: %w", err)
 	}
 
-	c.logger.Info("User deleted from Hanko", map[string]interface{}{
-		"user_id": userID,
-	})
+	if c.logger != nil {
+		c.logger.Info("User deleted from Hanko", map[string]interface{}{
+			"user_id": userID,
+		})
+	}
 
 	return nil
 }
@@ -321,22 +333,26 @@ func (c *HankoClient) makeRequest(ctx context.Context, method, path string, reqB
 	// Make request
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		c.logger.Error("Hanko API request failed", map[string]interface{}{
-			"error":  err.Error(),
-			"method": method,
-			"url":    url,
-		})
+		if c.logger != nil {
+			c.logger.Error("Hanko API request failed", map[string]interface{}{
+				"error":  err.Error(),
+				"method": method,
+				"url":    url,
+			})
+		}
 		return fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	// Check status code
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		c.logger.Error("Hanko API returned error", map[string]interface{}{
-			"status_code": resp.StatusCode,
-			"method":      method,
-			"url":         url,
-		})
+		if c.logger != nil {
+			c.logger.Error("Hanko API returned error", map[string]interface{}{
+				"status_code": resp.StatusCode,
+				"method":      method,
+				"url":         url,
+			})
+		}
 		return fmt.Errorf("API returned status %d", resp.StatusCode)
 	}
 
@@ -347,11 +363,13 @@ func (c *HankoClient) makeRequest(ctx context.Context, method, path string, reqB
 		}
 	}
 
-	c.logger.Debug("Hanko API request successful", map[string]interface{}{
-		"method":      method,
-		"url":         path,
-		"status_code": resp.StatusCode,
-	})
+	if c.logger != nil {
+		c.logger.Debug("Hanko API request successful", map[string]interface{}{
+			"method":      method,
+			"url":         path,
+			"status_code": resp.StatusCode,
+		})
+	}
 
 	return nil
 }
