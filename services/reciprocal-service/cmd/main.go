@@ -20,7 +20,7 @@ import (
 	"reciprocal-clubs-backend/pkg/shared/messaging"
 	"reciprocal-clubs-backend/pkg/shared/monitoring"
 
-	"reciprocal-clubs-backend/services/reciprocal-service/internal/handlers/grpc"
+	grpcHandlers "reciprocal-clubs-backend/services/reciprocal-service/internal/handlers/grpc"
 	httpHandlers "reciprocal-clubs-backend/services/reciprocal-service/internal/handlers/http"
 	"reciprocal-clubs-backend/services/reciprocal-service/internal/models"
 	"reciprocal-clubs-backend/services/reciprocal-service/internal/repository"
@@ -37,60 +37,56 @@ func main() {
 	}
 
 	// Initialize logger
-	logger := logging.NewLogger(logging.Config{
-		Level:      cfg.Logging.Level,
-		Format:     cfg.Logging.Format,
-		Output:     cfg.Logging.Output,
-		TimeFormat: cfg.Logging.TimeFormat,
-	}, serviceName)
+	logger := logging.NewLogger(&cfg.Logging, serviceName)
 
-	logger.Info("Starting reciprocal service")
+	logger.Info("Starting reciprocal service", nil)
 
 	// Initialize database
-	db, err := database.NewConnection(cfg.Database.GetDSN())
+	db, err := database.NewConnection(&cfg.Database, logger)
 	if err != nil {
-		logger.Fatal(fmt.Sprintf("Failed to connect to database: %v", err))
+		logger.Fatal("Failed to connect to database", map[string]interface{}{
+			"error": err.Error(),
+		})
 	}
+	defer db.Close()
 
 	// Auto-migrate database schema
-	if err := db.AutoMigrate(
+	if err := db.Migrate(
 		&models.Agreement{},
 		&models.Visit{},
 		&models.VisitRestriction{},
 	); err != nil {
-		logger.Fatal(fmt.Sprintf("Failed to migrate database: %v", err))
+		logger.Fatal("Failed to migrate database", map[string]interface{}{
+			"error": err.Error(),
+		})
 	}
-
-	// Initialize NATS client
-	natsConfig := messaging.Config{
-		URL:            cfg.NATS.URL,
-		ClusterID:      cfg.NATS.ClusterID,
-		ClientID:       cfg.NATS.ClientID + "-" + serviceName,
-		ConnectTimeout: time.Duration(cfg.NATS.ConnectTimeout) * time.Second,
-		RequestTimeout: time.Duration(cfg.NATS.RequestTimeout) * time.Second,
-		EnableJetStream: true,
-	}
-
-	natsClient, err := messaging.NewClient(natsConfig, serviceName)
-	if err != nil {
-		logger.Fatal(fmt.Sprintf("Failed to connect to NATS: %v", err))
-	}
-	defer natsClient.Close()
 
 	// Initialize monitoring
-	monitoringService := monitoring.NewService(cfg.Monitoring, serviceName)
+	monitor := monitoring.NewMonitor(&cfg.Monitoring, logger, serviceName, cfg.Service.Version)
+
+	// Start metrics server
+	monitor.StartMetricsServer()
+
+	// Initialize message bus
+	messageBus, err := messaging.NewNATSMessageBus(&cfg.NATS, logger)
+	if err != nil {
+		logger.Fatal("Failed to create message bus", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
+	defer messageBus.Close()
 
 	// Initialize repository
-	repo := repository.NewGORMRepository(db, logger)
+	repo := repository.NewGORMRepository(db.DB, logger)
 
 	// Initialize service
-	reciprocalService := service.NewReciprocalService(repo, logger, natsClient, monitoringService)
+	reciprocalService := service.NewReciprocalService(repo, logger, messageBus, monitor)
 
 	// Initialize HTTP handlers
-	httpHandler := httpHandlers.NewHTTPHandler(reciprocalService, logger, monitoringService)
+	httpHandler := httpHandlers.NewHTTPHandler(reciprocalService, logger, monitor)
 
 	// Initialize gRPC handlers
-	grpcHandler := grpc.NewGRPCHandler(reciprocalService, logger, monitoringService)
+	grpcHandler := grpcHandlers.NewGRPCHandler(reciprocalService, logger, monitor)
 
 	// Start HTTP server
 	httpServer := &http.Server{
@@ -99,9 +95,13 @@ func main() {
 	}
 
 	go func() {
-		logger.Info(fmt.Sprintf("HTTP server listening on port %d", cfg.Service.Port))
+		logger.Info("HTTP server listening", map[string]interface{}{
+			"port": cfg.Service.Port,
+		})
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatal(fmt.Sprintf("HTTP server failed: %v", err))
+			logger.Fatal("HTTP server failed", map[string]interface{}{
+				"error": err.Error(),
+			})
 		}
 	}()
 
@@ -112,30 +112,31 @@ func main() {
 
 	grpcListener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Service.GRPCPort))
 	if err != nil {
-		logger.Fatal(fmt.Sprintf("Failed to listen on gRPC port: %v", err))
+		logger.Fatal("Failed to listen on gRPC port", map[string]interface{}{
+			"error": err.Error(),
+			"port":  cfg.Service.GRPCPort,
+		})
 	}
 
 	go func() {
-		logger.Info(fmt.Sprintf("gRPC server listening on port %d", cfg.Service.GRPCPort))
+		logger.Info("gRPC server listening", map[string]interface{}{
+			"port": cfg.Service.GRPCPort,
+		})
 		if err := grpcServer.Serve(grpcListener); err != nil {
-			logger.Fatal(fmt.Sprintf("gRPC server failed: %v", err))
+			logger.Fatal("gRPC server failed", map[string]interface{}{
+				"error": err.Error(),
+			})
 		}
 	}()
 
-	// Start monitoring server
-	go func() {
-		logger.Info(fmt.Sprintf("Metrics server listening on port %d", cfg.Monitoring.MetricsPort))
-		if err := monitoringService.Start(); err != nil {
-			logger.Error(fmt.Sprintf("Metrics server failed: %v", err))
-		}
-	}()
+	// Monitoring server is already started above with StartMetricsServer()
 
 	// Wait for interrupt signal to gracefully shutdown the server
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	logger.Info("Shutting down servers...")
+	logger.Info("Shutting down servers...", nil)
 
 	// Graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -143,16 +144,16 @@ func main() {
 
 	// Shutdown HTTP server
 	if err := httpServer.Shutdown(ctx); err != nil {
-		logger.Error(fmt.Sprintf("HTTP server shutdown error: %v", err))
+		logger.Error("HTTP server shutdown error", map[string]interface{}{
+			"error": err.Error(),
+		})
 	}
 
 	// Stop gRPC server
 	grpcServer.GracefulStop()
 
 	// Close database connection
-	if sqlDB, err := db.DB(); err == nil {
-		sqlDB.Close()
-	}
+	db.Close()
 
-	logger.Info("Servers stopped")
+	logger.Info("Servers stopped", nil)
 }
