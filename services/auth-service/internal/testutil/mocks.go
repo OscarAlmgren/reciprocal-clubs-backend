@@ -7,9 +7,7 @@ import (
 	"time"
 
 	"reciprocal-clubs-backend/pkg/shared/config"
-	"reciprocal-clubs-backend/pkg/shared/logging"
 	"reciprocal-clubs-backend/pkg/shared/messaging"
-	"reciprocal-clubs-backend/pkg/shared/monitoring"
 	"reciprocal-clubs-backend/services/auth-service/internal/hanko"
 )
 
@@ -263,7 +261,7 @@ func (m *MockHankoClient) InitiatePasskeyAuthentication(ctx context.Context, ema
 			"expires_at": time.Now().Add(5 * time.Minute),
 		},
 	}
-	
+
 	m.challenges[challengeID] = user.ID
 	return challenge, nil
 }
@@ -343,7 +341,7 @@ func (m *MockHankoClient) InitiatePasskeyRegistration(ctx context.Context, userI
 			"expires_at": time.Now().Add(5 * time.Minute),
 		},
 	}
-	
+
 	m.challenges[challengeID] = userID
 	return challenge, nil
 }
