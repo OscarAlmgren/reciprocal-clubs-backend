@@ -1,0 +1,345 @@
+package http
+
+import (
+	"encoding/json"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/gorilla/mux"
+
+	"reciprocal-clubs-backend/pkg/shared/logging"
+	"reciprocal-clubs-backend/pkg/shared/monitoring"
+	"reciprocal-clubs-backend/services/notification-service/internal/service"
+)
+
+// HTTPHandler handles HTTP requests for notification service
+type HTTPHandler struct {
+	service    *service.NotificationService
+	logger     logging.Logger
+	monitoring *monitoring.Monitor
+}
+
+// NewHTTPHandler creates a new HTTP handler
+func NewHTTPHandler(service *service.NotificationService, logger logging.Logger, monitoring *monitoring.Monitor) *HTTPHandler {
+	return &HTTPHandler{
+		service:    service,
+		logger:     logger,
+		monitoring: monitoring,
+	}
+}
+
+// SetupRoutes configures the HTTP routes
+func (h *HTTPHandler) SetupRoutes() http.Handler {
+	router := mux.NewRouter()
+
+	// Health check
+	router.HandleFunc("/health", h.healthCheck).Methods("GET")
+
+	// API routes
+	api := router.PathPrefix("/api/v1").Subrouter()
+
+	// Notification routes
+	api.HandleFunc("/notifications", h.createNotification).Methods("POST")
+	api.HandleFunc("/notifications/{id}", h.getNotification).Methods("GET")
+	api.HandleFunc("/notifications/{id}/read", h.markAsRead).Methods("POST")
+	api.HandleFunc("/clubs/{clubId}/notifications", h.getClubNotifications).Methods("GET")
+	api.HandleFunc("/users/{userId}/notifications", h.getUserNotifications).Methods("GET")
+
+	// Template routes
+	api.HandleFunc("/templates", h.createTemplate).Methods("POST")
+	api.HandleFunc("/clubs/{clubId}/templates", h.getClubTemplates).Methods("GET")
+
+	// Stats routes
+	api.HandleFunc("/clubs/{clubId}/stats", h.getNotificationStats).Methods("GET")
+
+	// Add middleware
+	router.Use(h.loggingMiddleware)
+	router.Use(h.monitoringMiddleware)
+
+	return router
+}
+
+// Health check endpoint
+func (h *HTTPHandler) healthCheck(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":  "healthy",
+		"service": "notification-service",
+	})
+}
+
+// Notification handlers
+
+func (h *HTTPHandler) createNotification(w http.ResponseWriter, r *http.Request) {
+	var req service.CreateNotificationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	notification, err := h.service.CreateNotification(r.Context(), &req)
+	if err != nil {
+		h.logger.Error("Failed to create notification", map[string]interface{}{
+			"error": err.Error(),
+		})
+		h.writeError(w, http.StatusInternalServerError, "Failed to create notification")
+		return
+	}
+
+	h.writeJSON(w, http.StatusCreated, notification)
+}
+
+func (h *HTTPHandler) getNotification(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.ParseUint(vars["id"], 10, 32)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid ID")
+		return
+	}
+
+	notification, err := h.service.GetNotificationByID(r.Context(), uint(id))
+	if err != nil {
+		h.logger.Error("Failed to get notification", map[string]interface{}{
+			"error": err.Error(),
+			"id":    id,
+		})
+		h.writeError(w, http.StatusNotFound, "Notification not found")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, notification)
+}
+
+func (h *HTTPHandler) markAsRead(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.ParseUint(vars["id"], 10, 32)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid ID")
+		return
+	}
+
+	notification, err := h.service.MarkNotificationAsRead(r.Context(), uint(id))
+	if err != nil {
+		h.logger.Error("Failed to mark notification as read", map[string]interface{}{
+			"error": err.Error(),
+			"id":    id,
+		})
+		h.writeError(w, http.StatusInternalServerError, "Failed to mark notification as read")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, notification)
+}
+
+func (h *HTTPHandler) getClubNotifications(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	clubID, err := strconv.ParseUint(vars["clubId"], 10, 32)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid club ID")
+		return
+	}
+
+	// Parse query parameters for pagination
+	limitStr := r.URL.Query().Get("limit")
+	offsetStr := r.URL.Query().Get("offset")
+
+	limit := 50 // default
+	offset := 0 // default
+
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
+			limit = l
+		}
+	}
+
+	if offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+			offset = o
+		}
+	}
+
+	notifications, err := h.service.GetNotificationsByClub(r.Context(), uint(clubID), limit, offset)
+	if err != nil {
+		h.logger.Error("Failed to get club notifications", map[string]interface{}{
+			"error":   err.Error(),
+			"club_id": clubID,
+		})
+		h.writeError(w, http.StatusInternalServerError, "Failed to get notifications")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, notifications)
+}
+
+func (h *HTTPHandler) getUserNotifications(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	userID := vars["userId"]
+
+	clubIDStr := r.URL.Query().Get("club_id")
+	if clubIDStr == "" {
+		h.writeError(w, http.StatusBadRequest, "club_id query parameter is required")
+		return
+	}
+
+	clubID, err := strconv.ParseUint(clubIDStr, 10, 32)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid club ID")
+		return
+	}
+
+	// Parse query parameters for pagination
+	limitStr := r.URL.Query().Get("limit")
+	offsetStr := r.URL.Query().Get("offset")
+
+	limit := 50 // default
+	offset := 0 // default
+
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
+			limit = l
+		}
+	}
+
+	if offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+			offset = o
+		}
+	}
+
+	notifications, err := h.service.GetNotificationsByUser(r.Context(), userID, uint(clubID), limit, offset)
+	if err != nil {
+		h.logger.Error("Failed to get user notifications", map[string]interface{}{
+			"error":   err.Error(),
+			"user_id": userID,
+			"club_id": clubID,
+		})
+		h.writeError(w, http.StatusInternalServerError, "Failed to get notifications")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, notifications)
+}
+
+// Template handlers
+
+func (h *HTTPHandler) createTemplate(w http.ResponseWriter, r *http.Request) {
+	var req service.CreateTemplateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	template, err := h.service.CreateNotificationTemplate(r.Context(), &req)
+	if err != nil {
+		h.logger.Error("Failed to create template", map[string]interface{}{
+			"error": err.Error(),
+		})
+		h.writeError(w, http.StatusInternalServerError, "Failed to create template")
+		return
+	}
+
+	h.writeJSON(w, http.StatusCreated, template)
+}
+
+func (h *HTTPHandler) getClubTemplates(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	clubID, err := strconv.ParseUint(vars["clubId"], 10, 32)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid club ID")
+		return
+	}
+
+	templates, err := h.service.GetNotificationTemplatesByClub(r.Context(), uint(clubID))
+	if err != nil {
+		h.logger.Error("Failed to get club templates", map[string]interface{}{
+			"error":   err.Error(),
+			"club_id": clubID,
+		})
+		h.writeError(w, http.StatusInternalServerError, "Failed to get templates")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, templates)
+}
+
+// Stats handlers
+
+func (h *HTTPHandler) getNotificationStats(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	clubID, err := strconv.ParseUint(vars["clubId"], 10, 32)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid club ID")
+		return
+	}
+
+	// Parse query parameters for date range
+	fromStr := r.URL.Query().Get("from")
+	toStr := r.URL.Query().Get("to")
+
+	fromDate := time.Now().AddDate(0, -1, 0) // default to 1 month ago
+	toDate := time.Now()                     // default to now
+
+	if fromStr != "" {
+		if parsed, err := time.Parse("2006-01-02", fromStr); err == nil {
+			fromDate = parsed
+		}
+	}
+
+	if toStr != "" {
+		if parsed, err := time.Parse("2006-01-02", toStr); err == nil {
+			toDate = parsed
+		}
+	}
+
+	stats, err := h.service.GetNotificationStats(r.Context(), uint(clubID), fromDate, toDate)
+	if err != nil {
+		h.logger.Error("Failed to get notification stats", map[string]interface{}{
+			"error":   err.Error(),
+			"club_id": clubID,
+		})
+		h.writeError(w, http.StatusInternalServerError, "Failed to get stats")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, stats)
+}
+
+// Utility methods
+
+func (h *HTTPHandler) writeJSON(w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(data)
+}
+
+func (h *HTTPHandler) writeError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]string{
+		"error": message,
+	})
+}
+
+// Middleware
+
+func (h *HTTPHandler) loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h.logger.Info("HTTP request", map[string]interface{}{
+			"method": r.Method,
+			"path":   r.URL.Path,
+			"remote": r.RemoteAddr,
+		})
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (h *HTTPHandler) monitoringMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		next.ServeHTTP(w, r)
+		duration := time.Since(start)
+		h.monitoring.RecordHTTPRequest(r.Method, r.URL.Path, 200, duration)
+	})
+}
