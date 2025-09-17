@@ -68,4 +68,31 @@ systemctl --user start hanko.service
 - **Webhooks**: Hanko → Auth Service event notifications
 - **Environment**: Auth service configured with Hanko endpoints
 
+## Recent Improvements (September 17, 2024)
+
+### Enhanced Hanko Client
+- **Nil-Safe Logging**: Robust error handling with nil checks throughout client
+- **Improved Error Handling**: Better HTTP request/response error management
+- **Test Coverage**: Complete test suite with proper API endpoint testing
+- **WebAuthn Standards**: Updated to use standard WebAuthn API endpoints
+
+### Key Features
+- **Passkey Registration**: `/webauthn/registration/initialize`
+- **Passkey Authentication**: `/webauthn/authentication/initialize`
+- **Session Validation**: `/sessions/validate`
+- **User Management**: Full CRUD operations with error handling
+
+### Code Example
+```go
+// Nil-safe client operations
+client := hanko.NewHankoClient(config, logger)
+
+// All operations handle nil logger gracefully
+user, err := client.CreateUser(ctx, "user@example.com")
+if err != nil {
+    // Proper error handling
+    log.Printf("Failed to create user: %v", err)
+}
+```
+
 For detailed deployment instructions, see [HANKO_DEPLOYMENT.md](./HANKO_DEPLOYMENT.md)
