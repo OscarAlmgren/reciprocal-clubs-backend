@@ -19,7 +19,7 @@ import (
 	"reciprocal-clubs-backend/pkg/shared/logging"
 	"reciprocal-clubs-backend/pkg/shared/messaging"
 	"reciprocal-clubs-backend/pkg/shared/monitoring"
-	
+
 	"reciprocal-clubs-backend/services/reciprocal-service/internal/handlers/grpc"
 	httpHandlers "reciprocal-clubs-backend/services/reciprocal-service/internal/handlers/http"
 	"reciprocal-clubs-backend/services/reciprocal-service/internal/models"
@@ -89,7 +89,7 @@ func main() {
 	// Initialize HTTP handlers
 	httpHandler := httpHandlers.NewHTTPHandler(reciprocalService, logger, monitoringService)
 
-	// Initialize gRPC handlers  
+	// Initialize gRPC handlers
 	grpcHandler := grpc.NewGRPCHandler(reciprocalService, logger, monitoringService)
 
 	// Start HTTP server
