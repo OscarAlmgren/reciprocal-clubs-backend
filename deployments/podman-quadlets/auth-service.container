@@ -1,7 +1,7 @@
 [Unit]
 Description=Auth Service for Reciprocal Clubs
-Wants=network-online.target postgres.service nats.service redis.service
-After=network-online.target postgres.service nats.service redis.service
+Wants=network-online.target postgres.service nats.service redis.service hanko.service
+After=network-online.target postgres.service nats.service redis.service hanko.service
 RequiresMountsFor=%t/containers
 
 [Container]
@@ -14,6 +14,8 @@ Environment=AUTH_SERVICE_DATABASE_PASSWORD=postgres
 Environment=AUTH_SERVICE_NATS_URL=nats://reciprocal-nats:4222
 Environment=AUTH_SERVICE_REDIS_HOST=reciprocal-redis
 Environment=AUTH_SERVICE_AUTH_JWT_SECRET=your-secret-key
+Environment=AUTH_SERVICE_HANKO_BASE_URL=http://reciprocal-hanko:8000
+Environment=AUTH_SERVICE_HANKO_API_KEY=
 PublishPort=8081:8081
 PublishPort=9081:9091
 Network=reciprocal-clubs.network

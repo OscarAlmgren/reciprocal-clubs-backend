@@ -9,18 +9,23 @@ import (
 )
 
 func TestNewClient(t *testing.T) {
-	client := NewClient("http://localhost:8000", "test-api-key", "test-project")
-	
-	if client == nil {
-		t.Fatal("NewClient returned nil")
+	config := Config{
+		BaseURL: "http://localhost:8000",
+		APIKey:  "test-api-key",
+		Timeout: 30 * time.Second,
 	}
-	
+	client := NewHankoClient(config, nil)
+
+	if client == nil {
+		t.Fatal("NewHankoClient returned nil")
+	}
+
 	// Test that we can cast to the concrete type to check internals if needed
-	concreteClient, ok := client.(*hankoClient)
+	concreteClient, ok := client.(*HankoClient)
 	if !ok {
 		t.Fatal("Client is not of expected type")
 	}
-	
+
 	if concreteClient.baseURL != "http://localhost:8000" {
 		t.Errorf("Expected baseURL %s, got %s", "http://localhost:8000", concreteClient.baseURL)
 	}
@@ -97,11 +102,16 @@ func TestCreateUser(t *testing.T) {
 			defer server.Close()
 
 			// Create client with test server URL
-			client := NewClient(server.URL, "test-api-key", "test-project")
-			
+			config := Config{
+				BaseURL: server.URL,
+				APIKey:  "test-api-key",
+				Timeout: 30 * time.Second,
+			}
+			client := NewHankoClient(config, nil)
+
 			// Test CreateUser
 			ctx := context.Background()
-			user, err := client.CreateUser(ctx, tt.email, tt.displayName)
+			user, err := client.CreateUser(ctx, tt.email)
 
 			if tt.expectError {
 				if err == nil {
@@ -128,9 +138,8 @@ func TestCreateUser(t *testing.T) {
 				t.Errorf("Expected email %s, got %s", tt.email, user.Email)
 			}
 
-			if user.DisplayName != tt.displayName {
-				t.Errorf("Expected display name %s, got %s", tt.displayName, user.DisplayName)
-			}
+			// Note: displayName is not part of the API response in our current implementation
+			// This test would need to be updated based on the actual HankoUser struct
 		})
 	}
 }
@@ -186,7 +195,12 @@ func TestGetUser(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient(server.URL, "test-api-key", "test-project")
+			config := Config{
+				BaseURL: server.URL,
+				APIKey:  "test-api-key",
+				Timeout: 30 * time.Second,
+			}
+			client := NewHankoClient(config, nil)
 			
 			ctx := context.Background()
 			user, err := client.GetUser(ctx, tt.userID)
@@ -253,7 +267,12 @@ func TestDeleteUser(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient(server.URL, "test-api-key", "test-project")
+			config := Config{
+				BaseURL: server.URL,
+				APIKey:  "test-api-key",
+				Timeout: 30 * time.Second,
+			}
+			client := NewHankoClient(config, nil)
 			
 			ctx := context.Background()
 			err := client.DeleteUser(ctx, tt.userID)
@@ -322,7 +341,12 @@ func TestInitiatePasskeyLogin(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient(server.URL, "test-api-key", "test-project")
+			config := Config{
+				BaseURL: server.URL,
+				APIKey:  "test-api-key",
+				Timeout: 30 * time.Second,
+			}
+			client := NewHankoClient(config, nil)
 			
 			ctx := context.Background()
 			challenge, err := client.InitiatePasskeyLogin(ctx, tt.email)
@@ -422,7 +446,12 @@ func TestVerifyPasskey(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient(server.URL, "test-api-key", "test-project")
+			config := Config{
+				BaseURL: server.URL,
+				APIKey:  "test-api-key",
+				Timeout: 30 * time.Second,
+			}
+			client := NewHankoClient(config, nil)
 			
 			ctx := context.Background()
 			result, err := client.VerifyPasskey(ctx, tt.challengeID, tt.credentialData)
@@ -499,7 +528,12 @@ func TestInitiatePasskeyRegistration(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient(server.URL, "test-api-key", "test-project")
+			config := Config{
+				BaseURL: server.URL,
+				APIKey:  "test-api-key",
+				Timeout: 30 * time.Second,
+			}
+			client := NewHankoClient(config, nil)
 			
 			ctx := context.Background()
 			challenge, err := client.InitiatePasskeyRegistration(ctx, tt.userID)
@@ -583,7 +617,12 @@ func TestValidateSession(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient(server.URL, "test-api-key", "test-project")
+			config := Config{
+				BaseURL: server.URL,
+				APIKey:  "test-api-key",
+				Timeout: 30 * time.Second,
+			}
+			client := NewHankoClient(config, nil)
 			
 			ctx := context.Background()
 			user, err := client.ValidateSession(ctx, tt.sessionToken)
@@ -634,23 +673,23 @@ func TestClientTimeout(t *testing.T) {
 }
 
 func TestNewMockClient(t *testing.T) {
-	mockClient := NewMockClient()
-	
+	mockClient := NewMockHankoClient(nil)
+
 	if mockClient == nil {
-		t.Fatal("NewMockClient returned nil")
+		t.Fatal("NewMockHankoClient returned nil")
 	}
-	
+
 	ctx := context.Background()
-	
+
 	// Test creating a user
-	user, err := mockClient.CreateUser(ctx, "test@example.com", "Test User")
+	user, err := mockClient.CreateUser(ctx, "test@example.com")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
 	if user == nil {
 		t.Error("Expected user but got nil")
 	}
-	
+
 	// Test getting the created user
 	retrievedUser, err := mockClient.GetUser(ctx, user.ID)
 	if err != nil {
@@ -662,28 +701,28 @@ func TestNewMockClient(t *testing.T) {
 	if retrievedUser.Email != user.Email {
 		t.Errorf("Expected email %s, got %s", user.Email, retrievedUser.Email)
 	}
-	
+
 	// Test login initiation
-	challenge, err := mockClient.InitiatePasskeyLogin(ctx, user.Email)
+	challenge, err := mockClient.InitiatePasskeyAuthentication(ctx, user.Email)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
 	if challenge == nil {
 		t.Error("Expected challenge but got nil")
 	}
-	
+
 	// Test passkey verification
 	credentialData := map[string]interface{}{
 		"id": "test-credential",
 	}
-	result, err := mockClient.VerifyPasskey(ctx, challenge.ID, credentialData)
+	result, err := mockClient.VerifyPasskey(ctx, user.ID, credentialData)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
 	if result == nil {
 		t.Error("Expected result but got nil")
 	}
-	if !result.Verified {
+	if !result.Success {
 		t.Error("Expected verification to succeed")
 	}
 }

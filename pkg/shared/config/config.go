@@ -14,6 +14,7 @@ type Config struct {
 	Redis      RedisConfig      `mapstructure:"redis"`
 	NATS       NATSConfig       `mapstructure:"nats"`
 	Auth       AuthConfig       `mapstructure:"auth"`
+	Hanko      HankoConfig      `mapstructure:"hanko"`
 	Monitoring MonitoringConfig `mapstructure:"monitoring"`
 	Logging    LoggingConfig    `mapstructure:"logging"`
 }
@@ -68,6 +69,14 @@ type AuthConfig struct {
 	JWTExpiration int    `mapstructure:"jwt_expiration"`
 	Issuer        string `mapstructure:"issuer"`
 	Audience      string `mapstructure:"audience"`
+}
+
+// HankoConfig holds Hanko authentication service configuration
+type HankoConfig struct {
+	BaseURL    string `mapstructure:"base_url"`
+	APIKey     string `mapstructure:"api_key"`
+	Timeout    int    `mapstructure:"timeout"`
+	RetryCount int    `mapstructure:"retry_count"`
 }
 
 // MonitoringConfig holds monitoring configuration

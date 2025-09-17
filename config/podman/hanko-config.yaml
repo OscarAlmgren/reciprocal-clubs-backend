@@ -1,0 +1,96 @@
+# Hanko Configuration for Reciprocal Clubs Platform - Podman
+server:
+  public:
+    address: ":8000"
+    cors:
+      allow_origins:
+        - "http://localhost:3000"
+        - "http://localhost:8080"
+        - "https://reciprocal-clubs.com"
+      allow_methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+      allow_headers:
+        - Authorization
+        - Content-Type
+        - X-Correlation-ID
+      expose_headers:
+        - X-Session-Lifetime
+      allow_credentials: true
+  admin:
+    address: ":8001"
+
+database:
+  host: reciprocal-postgres
+  port: 5432
+  database: reciprocal_clubs
+  user: postgres
+  password: postgres
+  dialect: postgres
+
+webauthn:
+  relying_party:
+    id: "reciprocal-clubs.com"
+    display_name: "Reciprocal Clubs Platform"
+    origins:
+      - "http://localhost:3000"
+      - "http://localhost:8080"
+      - "https://reciprocal-clubs.com"
+
+emails:
+  require_verification: true
+  max_num_of_addresses: 5
+
+password:
+  enabled: true
+  min_password_length: 8
+
+rate_limiter:
+  enabled: true
+  store: redis
+  redis_config:
+    address: reciprocal-redis:6379
+
+session:
+  lifespan: "12h"
+  cookie:
+    domain: "reciprocal-clubs.com"
+    http_only: true
+    same_site: lax
+    secure: false  # Set to true in production with HTTPS
+
+log:
+  log_health_and_metrics: false
+
+audit_log:
+  console_output:
+    enabled: true
+    output: stdout
+
+account:
+  allow_deletion: true
+  allow_signup: true
+
+third_party:
+  providers:
+    google:
+      enabled: false
+    github:
+      enabled: false
+    apple:
+      enabled: false
+
+webhooks:
+  enabled: true
+  callback_timeout: "30s"
+  hooks:
+    - callback_url: "http://reciprocal-auth-service:8081/webhooks/hanko"
+      events:
+        - "user.created"
+        - "user.updated"
+        - "user.deleted"
+        - "session.created"
+        - "session.deleted"

@@ -170,8 +170,8 @@ func (m *MockMessageBus) Clear() {
 
 // MockHankoClient implements the hanko.Client interface for testing
 type MockHankoClient struct {
-	users     map[string]*hanko.User
-	sessions  map[string]*hanko.Session
+	users     map[string]*hanko.HankoUser
+	sessions  map[string]*hanko.HankoSession
 	challenges map[string]string
 	mu        sync.RWMutex
 	shouldFail map[string]bool
@@ -179,14 +179,14 @@ type MockHankoClient struct {
 
 func NewMockHankoClient() *MockHankoClient {
 	return &MockHankoClient{
-		users:      make(map[string]*hanko.User),
-		sessions:   make(map[string]*hanko.Session),
+		users:      make(map[string]*hanko.HankoUser),
+		sessions:   make(map[string]*hanko.HankoSession),
 		challenges: make(map[string]string),
 		shouldFail: make(map[string]bool),
 	}
 }
 
-func (m *MockHankoClient) CreateUser(ctx context.Context, email, displayName string) (*hanko.User, error) {
+func (m *MockHankoClient) CreateUser(ctx context.Context, email, displayName string) (*hanko.HankoUser, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -195,17 +195,19 @@ func (m *MockHankoClient) CreateUser(ctx context.Context, email, displayName str
 	}
 
 	userID := fmt.Sprintf("hanko-user-%d", len(m.users)+1)
-	user := &hanko.User{
-		ID:          userID,
-		Email:       email,
-		DisplayName: displayName,
-		CreatedAt:   time.Now(),
+	user := &hanko.HankoUser{
+		ID:            userID,
+		Email:         email,
+		EmailVerified: true,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+		HasPasskey:    false,
 	}
 	m.users[userID] = user
 	return user, nil
 }
 
-func (m *MockHankoClient) GetUser(ctx context.Context, userID string) (*hanko.User, error) {
+func (m *MockHankoClient) GetUser(ctx context.Context, userID string) (*hanko.HankoUser, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -232,7 +234,7 @@ func (m *MockHankoClient) DeleteUser(ctx context.Context, userID string) error {
 	return nil
 }
 
-func (m *MockHankoClient) InitiatePasskeyLogin(ctx context.Context, email string) (*hanko.LoginChallenge, error) {
+func (m *MockHankoClient) InitiatePasskeyAuthentication(ctx context.Context, email string) (*hanko.PasskeyAuthenticationResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -241,7 +243,7 @@ func (m *MockHankoClient) InitiatePasskeyLogin(ctx context.Context, email string
 	}
 
 	// Find user by email
-	var user *hanko.User
+	var user *hanko.HankoUser
 	for _, u := range m.users {
 		if u.Email == email {
 			user = u
@@ -253,18 +255,19 @@ func (m *MockHankoClient) InitiatePasskeyLogin(ctx context.Context, email string
 	}
 
 	challengeID := fmt.Sprintf("challenge-%d", time.Now().UnixNano())
-	challenge := &hanko.LoginChallenge{
-		ID:          challengeID,
-		UserID:      user.ID,
-		Challenge:   "mock-challenge-data",
-		ExpiresAt:   time.Now().Add(5 * time.Minute),
+	challenge := &hanko.PasskeyAuthenticationResponse{
+		AuthenticationOptions: map[string]interface{}{
+			"challenge": "mock-challenge-data",
+			"user_id":   user.ID,
+			"expires_at": time.Now().Add(5 * time.Minute),
+		},
 	}
 	
 	m.challenges[challengeID] = user.ID
 	return challenge, nil
 }
 
-func (m *MockHankoClient) VerifyPasskey(ctx context.Context, challengeID string, credentialData map[string]interface{}) (*hanko.VerificationResult, error) {
+func (m *MockHankoClient) VerifyPasskey(ctx context.Context, userID string, credentialResult map[string]interface{}) (*hanko.VerifyPasskeyResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -272,24 +275,28 @@ func (m *MockHankoClient) VerifyPasskey(ctx context.Context, challengeID string,
 		return nil, fmt.Errorf("mock error: verify passkey failed")
 	}
 
-	userID, exists := m.challenges[challengeID]
-	if !exists {
-		return nil, fmt.Errorf("challenge not found")
+	user := m.users[userID]
+	if user == nil {
+		return nil, fmt.Errorf("user not found")
 	}
 
-	user := m.users[userID]
-	result := &hanko.VerificationResult{
+	sessionID := fmt.Sprintf("mock_session_%d", time.Now().UnixNano())
+	session := &hanko.HankoSession{
+		ID:        sessionID,
 		UserID:    userID,
-		Verified:  true,
-		User:      user,
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+		CreatedAt: time.Now(),
 	}
-	
-	// Clean up challenge
-	delete(m.challenges, challengeID)
+	m.sessions[sessionID] = session
+
+	result := &hanko.VerifyPasskeyResponse{
+		Success: true,
+		Session: *session,
+	}
 	return result, nil
 }
 
-func (m *MockHankoClient) ValidateSession(ctx context.Context, sessionToken string) (*hanko.User, error) {
+func (m *MockHankoClient) ValidateSession(ctx context.Context, sessionToken string) (*hanko.ValidateSessionResponse, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -299,18 +306,22 @@ func (m *MockHankoClient) ValidateSession(ctx context.Context, sessionToken stri
 
 	session, exists := m.sessions[sessionToken]
 	if !exists {
-		return nil, fmt.Errorf("session not found")
+		return &hanko.ValidateSessionResponse{Valid: false}, nil
 	}
 
 	if time.Now().After(session.ExpiresAt) {
-		return nil, fmt.Errorf("session expired")
+		return &hanko.ValidateSessionResponse{Valid: false}, nil
 	}
 
 	user := m.users[session.UserID]
-	return user, nil
+	return &hanko.ValidateSessionResponse{
+		Valid:   true,
+		Session: *session,
+		User:    *user,
+	}, nil
 }
 
-func (m *MockHankoClient) InitiatePasskeyRegistration(ctx context.Context, userID string) (*hanko.RegistrationChallenge, error) {
+func (m *MockHankoClient) InitiatePasskeyRegistration(ctx context.Context, userID string) (*hanko.PasskeyRegistrationResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -318,18 +329,18 @@ func (m *MockHankoClient) InitiatePasskeyRegistration(ctx context.Context, userI
 		return nil, fmt.Errorf("mock error: initiate registration failed")
 	}
 
-	user, exists := m.users[userID]
+	_, exists := m.users[userID]
 	if !exists {
 		return nil, fmt.Errorf("user not found")
 	}
 
 	challengeID := fmt.Sprintf("reg-challenge-%d", time.Now().UnixNano())
-	challenge := &hanko.RegistrationChallenge{
-		ID:        challengeID,
-		UserID:    userID,
-		Challenge: "mock-registration-challenge-data",
-		ExpiresAt: time.Now().Add(5 * time.Minute),
-		User:      user,
+	challenge := &hanko.PasskeyRegistrationResponse{
+		RegistrationOptions: map[string]interface{}{
+			"challenge": "mock-registration-challenge-data",
+			"user_id":   userID,
+			"expires_at": time.Now().Add(5 * time.Minute),
+		},
 	}
 	
 	m.challenges[challengeID] = userID
@@ -343,13 +354,13 @@ func (m *MockHankoClient) SetShouldFail(method string, shouldFail bool) {
 	m.shouldFail[method] = shouldFail
 }
 
-func (m *MockHankoClient) AddUser(user *hanko.User) {
+func (m *MockHankoClient) AddUser(user *hanko.HankoUser) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.users[user.ID] = user
 }
 
-func (m *MockHankoClient) AddSession(token string, session *hanko.Session) {
+func (m *MockHankoClient) AddSession(token string, session *hanko.HankoSession) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sessions[token] = session
@@ -364,8 +375,8 @@ func (m *MockHankoClient) GetUserCount() int {
 func (m *MockHankoClient) Clear() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.users = make(map[string]*hanko.User)
-	m.sessions = make(map[string]*hanko.Session)
+	m.users = make(map[string]*hanko.HankoUser)
+	m.sessions = make(map[string]*hanko.HankoSession)
 	m.challenges = make(map[string]string)
 	m.shouldFail = make(map[string]bool)
 }

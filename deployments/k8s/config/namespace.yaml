@@ -33,6 +33,10 @@ data:
   BLOCKCHAIN_ORDERER_ENDPOINT: "fabric-orderer-service:7050"
   BLOCKCHAIN_CA_ENDPOINT: "fabric-ca-service:7054"
   
+  # Hanko authentication configuration
+  HANKO_BASE_URL: "http://hanko-service:8000"
+  HANKO_ADMIN_URL: "http://hanko-service:8001"
+
   # Monitoring configuration
   PROMETHEUS_URL: "http://prometheus-service:9090"
   GRAFANA_URL: "http://grafana-service:3000"

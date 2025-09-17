@@ -1,0 +1,286 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hanko-config
+  namespace: reciprocal-clubs
+data:
+  config.yaml: |
+    # Hanko Configuration for Reciprocal Clubs Platform - Kubernetes
+    server:
+      public:
+        address: ":8000"
+        cors:
+          allow_origins:
+            - "http://localhost:3000"
+            - "http://localhost:8080"
+            - "https://reciprocal-clubs.com"
+          allow_methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          allow_headers:
+            - Authorization
+            - Content-Type
+            - X-Correlation-ID
+          expose_headers:
+            - X-Session-Lifetime
+          allow_credentials: true
+      admin:
+        address: ":8001"
+
+    database:
+      host: postgres-service
+      port: 5432
+      database: reciprocal_clubs
+      user: postgres
+      password: postgres
+      dialect: postgres
+
+    webauthn:
+      relying_party:
+        id: "reciprocal-clubs.com"
+        display_name: "Reciprocal Clubs Platform"
+        origins:
+          - "http://localhost:3000"
+          - "http://localhost:8080"
+          - "https://reciprocal-clubs.com"
+
+    emails:
+      require_verification: true
+      max_num_of_addresses: 5
+
+    password:
+      enabled: true
+      min_password_length: 8
+
+    rate_limiter:
+      enabled: true
+      store: redis
+      redis_config:
+        address: redis-service:6379
+
+    session:
+      lifespan: "12h"
+      cookie:
+        domain: "reciprocal-clubs.com"
+        http_only: true
+        same_site: lax
+        secure: false  # Set to true in production with HTTPS
+
+    log:
+      log_health_and_metrics: false
+
+    audit_log:
+      console_output:
+        enabled: true
+        output: stdout
+
+    account:
+      allow_deletion: true
+      allow_signup: true
+
+    third_party:
+      providers:
+        google:
+          enabled: false
+        github:
+          enabled: false
+        apple:
+          enabled: false
+
+    webhooks:
+      enabled: true
+      callback_timeout: "30s"
+      hooks:
+        - callback_url: "http://auth-service:8081/webhooks/hanko"
+          events:
+            - "user.created"
+            - "user.updated"
+            - "user.deleted"
+            - "session.created"
+            - "session.deleted"
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hanko-migrate
+  namespace: reciprocal-clubs
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: hanko-migrate
+        image: teamhanko/hanko:latest
+        command: ["hanko", "migrate", "up", "--config", "/etc/config/config.yaml"]
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config
+        env:
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: reciprocal-clubs-secrets
+              key: postgres-password
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+      volumes:
+      - name: config
+        configMap:
+          name: hanko-config
+      initContainers:
+      - name: wait-for-postgres
+        image: postgres:15-alpine
+        command: ['sh', '-c', 'until pg_isready -h postgres-service -p 5432; do echo waiting for postgres; sleep 2; done;']
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hanko
+  namespace: reciprocal-clubs
+  labels:
+    app: hanko
+    component: authentication
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hanko
+  template:
+    metadata:
+      labels:
+        app: hanko
+        component: authentication
+    spec:
+      containers:
+      - name: hanko
+        image: teamhanko/hanko:latest
+        command: ["hanko", "serve", "--config", "/etc/config/config.yaml", "all"]
+        ports:
+        - containerPort: 8000
+          name: public
+          protocol: TCP
+        - containerPort: 8001
+          name: admin
+          protocol: TCP
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config
+        env:
+        - name: PASSWORD_ENABLED
+          value: "true"
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: reciprocal-clubs-secrets
+              key: postgres-password
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 30
+      volumes:
+      - name: config
+        configMap:
+          name: hanko-config
+      initContainers:
+      - name: wait-for-postgres
+        image: postgres:15-alpine
+        command: ['sh', '-c', 'until pg_isready -h postgres-service -p 5432; do echo waiting for postgres; sleep 2; done;']
+      - name: wait-for-migrate
+        image: alpine:latest
+        command: ['sh', '-c', 'echo "Waiting for migration to complete"; sleep 30;']
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hanko-service
+  namespace: reciprocal-clubs
+  labels:
+    app: hanko
+    component: authentication
+spec:
+  selector:
+    app: hanko
+  ports:
+  - name: public
+    port: 8000
+    targetPort: 8000
+    protocol: TCP
+  - name: admin
+    port: 8001
+    targetPort: 8001
+    protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hanko-ingress
+  namespace: reciprocal-clubs
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "Authorization, Content-Type, X-Correlation-ID"
+spec:
+  rules:
+  - host: auth.reciprocal-clubs.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: hanko-service
+            port:
+              number: 8000
+  - host: auth-admin.reciprocal-clubs.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: hanko-service
+            port:
+              number: 8001

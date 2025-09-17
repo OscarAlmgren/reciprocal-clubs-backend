@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"reciprocal-clubs-backend/pkg/shared/database"

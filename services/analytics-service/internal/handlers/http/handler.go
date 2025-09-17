@@ -14,14 +14,14 @@ import (
 type HTTPHandler struct {
 	service    service.AnalyticsService
 	logger     logging.Logger
-	monitoring monitoring.Service
+	monitoring *monitoring.Monitor
 }
 
-func NewHTTPHandler(service service.AnalyticsService, logger logging.Logger, monitoring monitoring.Service) *HTTPHandler {
+func NewHTTPHandler(service service.AnalyticsService, logger logging.Logger, monitor *monitoring.Monitor) *HTTPHandler {
 	return &HTTPHandler{
 		service:    service,
 		logger:     logger,
-		monitoring: monitoring,
+		monitoring: monitor,
 	}
 }
 
@@ -81,7 +81,7 @@ func (h *HTTPHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {
 
 	metrics, err := h.service.GetMetrics(clubID, timeRange)
 	if err != nil {
-		h.logger.Error("Failed to get metrics: " + err.Error())
+		h.logger.Error("Failed to get metrics", map[string]interface{}{"error": err.Error(), "club_id": clubID})
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -96,7 +96,7 @@ func (h *HTTPHandler) GetReports(w http.ResponseWriter, r *http.Request) {
 
 	reports, err := h.service.GetReports(clubID, reportType)
 	if err != nil {
-		h.logger.Error("Failed to get reports: " + err.Error())
+		h.logger.Error("Failed to get reports", map[string]interface{}{"error": err.Error(), "club_id": clubID})
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -113,7 +113,7 @@ func (h *HTTPHandler) RecordEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.service.RecordEvent(event); err != nil {
-		h.logger.Error("Failed to record event: " + err.Error())
+		h.logger.Error("Failed to record event", map[string]interface{}{"error": err.Error(), "event": event})
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -125,7 +125,7 @@ func (h *HTTPHandler) RecordEvent(w http.ResponseWriter, r *http.Request) {
 
 func (h *HTTPHandler) LoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		h.logger.Info("HTTP Request: " + r.Method + " " + r.URL.Path)
+		h.logger.Info("HTTP Request", map[string]interface{}{"method": r.Method, "path": r.URL.Path})
 		next.ServeHTTP(w, r)
 	})
 }
@@ -133,10 +133,7 @@ func (h *HTTPHandler) LoggingMiddleware(next http.Handler) http.Handler {
 func (h *HTTPHandler) MonitoringMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Record metrics
-		h.monitoring.IncrementCounter("http_requests_total", map[string]string{
-			"method": r.Method,
-			"path":   r.URL.Path,
-		})
+		h.monitoring.RecordHTTPRequest(r.Method, r.URL.Path, 200, 0)
 
 		next.ServeHTTP(w, r)
 	})

@@ -49,34 +49,31 @@ type RecordEventResponse struct {
 type GRPCHandler struct {
 	service    service.AnalyticsService
 	logger     logging.Logger
-	monitoring monitoring.Service
+	monitoring *monitoring.Monitor
 }
 
-func NewGRPCHandler(service service.AnalyticsService, logger logging.Logger, monitoring monitoring.Service) *GRPCHandler {
+func NewGRPCHandler(service service.AnalyticsService, logger logging.Logger, monitor *monitoring.Monitor) *GRPCHandler {
 	return &GRPCHandler{
 		service:    service,
 		logger:     logger,
-		monitoring: monitoring,
+		monitoring: monitor,
 	}
 }
 
 func (h *GRPCHandler) RegisterServices(server *grpc.Server) {
 	// This would normally register the generated gRPC service
 	// RegisterAnalyticsServiceServer(server, h)
-	h.logger.Info("gRPC services registered for analytics-service")
+	h.logger.Info("gRPC services registered for analytics-service", map[string]interface{}{})
 }
 
 // Implement the AnalyticsServiceServer interface
 func (h *GRPCHandler) GetMetrics(ctx context.Context, req *GetMetricsRequest) (*GetMetricsResponse, error) {
-	h.logger.Info("gRPC GetMetrics called")
-	h.monitoring.IncrementCounter("grpc_requests_total", map[string]string{
-		"method": "GetMetrics",
-		"service": "analytics",
-	})
+	h.logger.Info("gRPC GetMetrics called", map[string]interface{}{"club_id": req.ClubId, "time_range": req.TimeRange})
+	h.monitoring.RecordGRPCRequest("GetMetrics", "success", 0)
 
 	metrics, err := h.service.GetMetrics(req.ClubId, req.TimeRange)
 	if err != nil {
-		h.logger.Error("Failed to get metrics: " + err.Error())
+		h.logger.Error("Failed to get metrics", map[string]interface{}{"error": err.Error(), "club_id": req.ClubId})
 		return nil, err
 	}
 
@@ -86,15 +83,12 @@ func (h *GRPCHandler) GetMetrics(ctx context.Context, req *GetMetricsRequest) (*
 }
 
 func (h *GRPCHandler) GetReports(ctx context.Context, req *GetReportsRequest) (*GetReportsResponse, error) {
-	h.logger.Info("gRPC GetReports called")
-	h.monitoring.IncrementCounter("grpc_requests_total", map[string]string{
-		"method": "GetReports",
-		"service": "analytics",
-	})
+	h.logger.Info("gRPC GetReports called", map[string]interface{}{"club_id": req.ClubId, "report_type": req.ReportType})
+	h.monitoring.RecordGRPCRequest("GetReports", "success", 0)
 
 	reports, err := h.service.GetReports(req.ClubId, req.ReportType)
 	if err != nil {
-		h.logger.Error("Failed to get reports: " + err.Error())
+		h.logger.Error("Failed to get reports", map[string]interface{}{"error": err.Error(), "club_id": req.ClubId})
 		return nil, err
 	}
 
@@ -104,15 +98,12 @@ func (h *GRPCHandler) GetReports(ctx context.Context, req *GetReportsRequest) (*
 }
 
 func (h *GRPCHandler) RecordEvent(ctx context.Context, req *RecordEventRequest) (*RecordEventResponse, error) {
-	h.logger.Info("gRPC RecordEvent called")
-	h.monitoring.IncrementCounter("grpc_requests_total", map[string]string{
-		"method": "RecordEvent",
-		"service": "analytics",
-	})
+	h.logger.Info("gRPC RecordEvent called", map[string]interface{}{"event_data": req.Event})
+	h.monitoring.RecordGRPCRequest("RecordEvent", "success", 0)
 
 	err := h.service.RecordEvent(req.Event)
 	if err != nil {
-		h.logger.Error("Failed to record event: " + err.Error())
+		h.logger.Error("Failed to record event", map[string]interface{}{"error": err.Error(), "event": req.Event})
 		return &RecordEventResponse{
 			Success: false,
 			Message: "Failed to record event: " + err.Error(),

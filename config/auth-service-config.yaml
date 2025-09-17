@@ -1,0 +1,61 @@
+service:
+  name: "auth-service"
+  version: "1.0.0"
+  environment: "development"
+  host: "0.0.0.0"
+  port: 8081
+  grpc_port: 9091
+  timeout: 30
+
+database:
+  host: "postgres"
+  port: 5432
+  user: "postgres"
+  password: "postgres"
+  database: "reciprocal_clubs"
+  ssl_mode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 10
+  conn_max_lifetime: 300
+
+redis:
+  host: "redis"
+  port: 6379
+  password: ""
+  database: 0
+
+nats:
+  url: "nats://nats:4222"
+  cluster_id: "reciprocal-clubs"
+  client_id: "auth-service"
+  servers: ["nats:4222"]
+  max_reconnect: 10
+  reconnect_wait: 5
+  connect_timeout: 30
+  request_timeout: 30
+
+auth:
+  jwt_secret: "your-super-secret-jwt-key-change-in-production"
+  jwt_expiration: 3600
+  issuer: "reciprocal-clubs-auth"
+  audience: "reciprocal-clubs-platform"
+
+hanko:
+  base_url: "http://hanko:8000"
+  api_key: ""
+  timeout: 30
+  retry_count: 3
+
+monitoring:
+  metrics_path: "/metrics"
+  metrics_port: 9091
+  health_path: "/health"
+  readiness_path: "/ready"
+  enable_metrics: true
+  enable_tracing: false
+
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
+  time_format: "2006-01-02T15:04:05.000Z"

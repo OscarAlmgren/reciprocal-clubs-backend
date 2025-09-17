@@ -203,6 +203,8 @@ services:
       - AUTH_SERVICE_NATS_URL=nats://nats:4222
       - AUTH_SERVICE_REDIS_HOST=redis
       - AUTH_SERVICE_AUTH_JWT_SECRET=your-secret-key
+      - AUTH_SERVICE_HANKO_BASE_URL=http://hanko:8000
+      - AUTH_SERVICE_HANKO_API_KEY=
     ports:
       - "8081:8081"
       - "9081:9091"
@@ -214,6 +216,8 @@ services:
       nats:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      hanko:
         condition: service_healthy
 
   member-service:
@@ -427,3 +431,40 @@ services:
       - COLLECTOR_OTLP_ENABLED=true
     networks:
       - reciprocal-clubs
+
+  # Hanko Authentication Service
+  hanko-migrate:
+    image: teamhanko/hanko:latest
+    container_name: reciprocal-hanko-migrate
+    volumes:
+      - ./config/hanko/config.yaml:/etc/config/config.yaml
+    command: ["migrate", "up", "--config", "/etc/config/config.yaml"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - reciprocal-clubs
+    restart: on-failure
+
+  hanko:
+    image: teamhanko/hanko:latest
+    container_name: reciprocal-hanko
+    ports:
+      - "8000:8000"  # Public API
+      - "8001:8001"  # Admin API
+    volumes:
+      - ./config/hanko/config.yaml:/etc/config/config.yaml
+    command: ["serve", "--config", "/etc/config/config.yaml", "all"]
+    environment:
+      - PASSWORD_ENABLED=true
+    networks:
+      - reciprocal-clubs
+    depends_on:
+      hanko-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

@@ -1,0 +1,21 @@
+[Unit]
+Description=Hanko Database Migration for Reciprocal Clubs
+Wants=network-online.target postgres.service
+After=network-online.target postgres.service
+RequiresMountsFor=%t/containers
+
+[Container]
+Image=docker.io/teamhanko/hanko:latest
+ContainerName=reciprocal-hanko-migrate
+Exec=migrate up --config /etc/config/config.yaml
+Volume=%h/.config/reciprocal-clubs/hanko:/etc/config:ro,Z
+Network=reciprocal-clubs.network
+AutoUpdate=registry
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

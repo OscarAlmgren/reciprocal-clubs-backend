@@ -131,7 +131,31 @@ start_infra() {
         --js --sd /data --cluster_name reciprocal-clubs \
         --cluster nats://0.0.0.0:6222 --routes nats://0.0.0.0:6222 \
         --http_port 8222
-    
+
+    # Hanko Migration
+    log_info "Starting Hanko Migration..."
+    podman run --rm \
+        --name reciprocal-hanko-migrate \
+        --network "$NETWORK_NAME" \
+        -v "$PROJECT_ROOT/config/podman/hanko-config.yaml:/etc/config/config.yaml:ro" \
+        teamhanko/hanko:latest \
+        migrate up --config /etc/config/config.yaml || {
+        log_warning "Hanko migration failed or already completed"
+    }
+
+    # Hanko Authentication Service
+    log_info "Starting Hanko Authentication Service..."
+    podman run -d \
+        --name reciprocal-hanko \
+        --network "$NETWORK_NAME" \
+        --replace \
+        -p 8000:8000 \
+        -p 8001:8001 \
+        -e PASSWORD_ENABLED=true \
+        -v "$PROJECT_ROOT/config/podman/hanko-config.yaml:/etc/config/config.yaml:ro" \
+        teamhanko/hanko:latest \
+        serve --config /etc/config/config.yaml all
+
     # MailHog
     log_info "Starting MailHog..."
     podman run -d \
@@ -260,6 +284,8 @@ start_apps() {
         -e AUTH_SERVICE_NATS_URL=nats://reciprocal-nats:4222 \
         -e AUTH_SERVICE_REDIS_HOST=reciprocal-redis \
         -e AUTH_SERVICE_AUTH_JWT_SECRET=your-secret-key \
+        -e AUTH_SERVICE_HANKO_BASE_URL=http://reciprocal-hanko:8000 \
+        -e AUTH_SERVICE_HANKO_API_KEY= \
         localhost/reciprocal-auth-service:latest || {
         log_warning "Failed to start Auth Service (image might not exist)"
     }
@@ -350,6 +376,7 @@ stop_all() {
         "reciprocal-peer0-org1"
         "reciprocal-orderer"
         "reciprocal-fabric-ca"
+        "reciprocal-hanko"
         "reciprocal-nats"
         "reciprocal-redis"
         "reciprocal-postgres"
@@ -388,6 +415,7 @@ clean() {
         "reciprocal-peer0-org1"
         "reciprocal-orderer"
         "reciprocal-fabric-ca"
+        "reciprocal-hanko"
         "reciprocal-nats"
         "reciprocal-redis"
         "reciprocal-postgres"
@@ -428,6 +456,7 @@ status() {
         "reciprocal-postgres"
         "reciprocal-redis"
         "reciprocal-nats"
+        "reciprocal-hanko"
         "reciprocal-mailhog"
         "reciprocal-fabric-ca"
         "reciprocal-orderer"
@@ -477,7 +506,7 @@ health_check() {
     log_info "Checking service health..."
     echo "=========================="
     
-    local services=("postgres" "redis" "nats")
+    local services=("postgres" "redis" "nats" "hanko")
     
     for service in "${services[@]}"; do
         local container_name="reciprocal-$service"

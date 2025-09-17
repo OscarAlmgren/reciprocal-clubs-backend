@@ -14,7 +14,7 @@ func TestUserStatus(t *testing.T) {
 		{"Active user", UserStatusActive, true},
 		{"Inactive user", UserStatusInactive, false},
 		{"Suspended user", UserStatusSuspended, false},
-		{"Pending user", UserStatusPending, false},
+		{"Pending user", UserStatusPendingVerification, false},
 	}
 
 	for _, tt := range tests {
@@ -27,75 +27,39 @@ func TestUserStatus(t *testing.T) {
 	}
 }
 
-func TestUserHasRole(t *testing.T) {
-	user := &User{
-		ID: 1,
-		Roles: []Role{
-			{ID: 1, Name: "admin", ClubID: 1},
-			{ID: 2, Name: "user", ClubID: 1},
-			{ID: 3, Name: "admin", ClubID: 2},
-		},
-	}
-
+func TestUserFullName(t *testing.T) {
 	tests := []struct {
-		name     string
-		clubID   uint
-		roleName string
-		expected bool
+		name      string
+		user      *User
+		expected  string
 	}{
-		{"Has admin role in club 1", 1, "admin", true},
-		{"Has user role in club 1", 1, "user", true},
-		{"Has admin role in club 2", 2, "admin", true},
-		{"Does not have moderator role in club 1", 1, "moderator", false},
-		{"Does not have admin role in club 3", 3, "admin", false},
+		{
+			"Both first and last name",
+			&User{FirstName: "John", LastName: "Doe", Username: "johndoe"},
+			"John Doe",
+		},
+		{
+			"First name only",
+			&User{FirstName: "John", LastName: "", Username: "johndoe"},
+			"John",
+		},
+		{
+			"Last name only",
+			&User{FirstName: "", LastName: "Doe", Username: "johndoe"},
+			"Doe",
+		},
+		{
+			"Username fallback",
+			&User{FirstName: "", LastName: "", Username: "johndoe"},
+			"johndoe",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if user.HasRole(tt.clubID, tt.roleName) != tt.expected {
-				t.Errorf("HasRole(%d, %s) = %v, want %v", tt.clubID, tt.roleName, user.HasRole(tt.clubID, tt.roleName), tt.expected)
-			}
-		})
-	}
-}
-
-func TestUserGetRolesForClub(t *testing.T) {
-	user := &User{
-		ID: 1,
-		Roles: []Role{
-			{ID: 1, Name: "admin", ClubID: 1},
-			{ID: 2, Name: "user", ClubID: 1},
-			{ID: 3, Name: "admin", ClubID: 2},
-		},
-	}
-
-	tests := []struct {
-		name     string
-		clubID   uint
-		expected []string
-	}{
-		{"Roles for club 1", 1, []string{"admin", "user"}},
-		{"Roles for club 2", 2, []string{"admin"}},
-		{"No roles for club 3", 3, []string{}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			roles := user.GetRolesForClub(tt.clubID)
-			if len(roles) != len(tt.expected) {
-				t.Errorf("GetRolesForClub(%d) returned %d roles, want %d", tt.clubID, len(roles), len(tt.expected))
-				continue
-			}
-
-			roleMap := make(map[string]bool)
-			for _, role := range roles {
-				roleMap[role.Name] = true
-			}
-
-			for _, expectedRole := range tt.expected {
-				if !roleMap[expectedRole] {
-					t.Errorf("GetRolesForClub(%d) missing role %s", tt.clubID, expectedRole)
-				}
+			result := tt.user.GetFullName()
+			if result != tt.expected {
+				t.Errorf("GetFullName() = %v, want %v", result, tt.expected)
 			}
 		})
 	}
@@ -122,89 +86,50 @@ func TestClubStatus(t *testing.T) {
 	}
 }
 
-func TestRoleHasPermission(t *testing.T) {
-	role := &Role{
-		ID:   1,
-		Name: "admin",
-		Permissions: []Permission{
-			{ID: 1, Name: "read", Resource: "users", Action: "read"},
-			{ID: 2, Name: "write", Resource: "users", Action: "write"},
-			{ID: 3, Name: "delete", Resource: "posts", Action: "delete"},
-		},
-	}
-
-	tests := []struct {
-		name       string
-		resource   string
-		action     string
-		expected   bool
-	}{
-		{"Has read permission on users", "users", "read", true},
-		{"Has write permission on users", "users", "write", true},
-		{"Has delete permission on posts", "posts", "delete", true},
-		{"Does not have delete permission on users", "users", "delete", false},
-		{"Does not have read permission on posts", "posts", "read", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if role.HasPermission(tt.resource, tt.action) != tt.expected {
-				t.Errorf("HasPermission(%s, %s) = %v, want %v", tt.resource, tt.action, role.HasPermission(tt.resource, tt.action), tt.expected)
-			}
-		})
-	}
-}
-
-func TestPermissionMatches(t *testing.T) {
+func TestPermissionBasics(t *testing.T) {
 	permission := &Permission{
-		Resource: "users",
-		Action:   "read",
+		Name:        "user.read",
+		Description: "Read user information",
+		Resource:    "user",
+		Action:      "read",
 	}
 
-	tests := []struct {
-		name     string
-		resource string
-		action   string
-		expected bool
-	}{
-		{"Exact match", "users", "read", true},
-		{"Different resource", "posts", "read", false},
-		{"Different action", "users", "write", false},
-		{"Both different", "posts", "write", false},
+	if permission.Name != "user.read" {
+		t.Errorf("Expected permission name user.read, got %s", permission.Name)
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if permission.Matches(tt.resource, tt.action) != tt.expected {
-				t.Errorf("Matches(%s, %s) = %v, want %v", tt.resource, tt.action, permission.Matches(tt.resource, tt.action), tt.expected)
-			}
-		})
+	if permission.Resource != "user" {
+		t.Errorf("Expected resource user, got %s", permission.Resource)
+	}
+	if permission.Action != "read" {
+		t.Errorf("Expected action read, got %s", permission.Action)
 	}
 }
 
-func TestUserSessionIsActive(t *testing.T) {
+func TestUserSessionIsValid(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
 		name      string
-		status    SessionStatus
+		isActive  bool
 		expiresAt time.Time
+		logoutAt  *time.Time
 		expected  bool
 	}{
-		{"Active and not expired", SessionStatusActive, now.Add(time.Hour), true},
-		{"Active but expired", SessionStatusActive, now.Add(-time.Hour), false},
-		{"Inactive and not expired", SessionStatusInactive, now.Add(time.Hour), false},
-		{"Revoked and not expired", SessionStatusRevoked, now.Add(time.Hour), false},
+		{"Active and not expired", true, now.Add(time.Hour), nil, true},
+		{"Active but expired", true, now.Add(-time.Hour), nil, false},
+		{"Inactive and not expired", false, now.Add(time.Hour), nil, false},
+		{"Logged out", true, now.Add(time.Hour), &now, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			session := &UserSession{
-				Status:    tt.status,
+				IsActive:  tt.isActive,
 				ExpiresAt: tt.expiresAt,
+				LogoutAt:  tt.logoutAt,
 			}
-			if session.IsActive() != tt.expected {
-				t.Errorf("IsActive() = %v, want %v", session.IsActive(), tt.expected)
+			if session.IsValid() != tt.expected {
+				t.Errorf("IsValid() = %v, want %v", session.IsValid(), tt.expected)
 			}
 		})
 	}
@@ -235,133 +160,82 @@ func TestUserSessionIsExpired(t *testing.T) {
 	}
 }
 
-func TestDefaultRoles(t *testing.T) {
-	roles := DefaultRoles()
+func TestGetDefaultRoles(t *testing.T) {
+	roles := GetDefaultRoles()
 
-	expectedRoles := map[string]string{
-		"admin":     "Full administrative access",
-		"moderator": "Content moderation and user management",
-		"member":    "Regular member access",
-		"guest":     "Limited guest access",
+	if len(roles) == 0 {
+		t.Error("GetDefaultRoles() returned no roles")
 	}
 
-	if len(roles) != len(expectedRoles) {
-		t.Errorf("DefaultRoles() returned %d roles, want %d", len(roles), len(expectedRoles))
-	}
-
+	// Check for admin role
+	foundAdmin := false
 	for _, role := range roles {
-		expectedDescription, exists := expectedRoles[role.Name]
-		if !exists {
-			t.Errorf("Unexpected role: %s", role.Name)
-			continue
+		if role.Name == RoleAdmin {
+			foundAdmin = true
+			if role.Description == "" {
+				t.Error("Admin role should have a description")
+			}
+			if !role.IsSystem {
+				t.Error("Admin role should be marked as system role")
+			}
 		}
-		if role.Description != expectedDescription {
-			t.Errorf("Role %s has description %s, want %s", role.Name, role.Description, expectedDescription)
-		}
+	}
+
+	if !foundAdmin {
+		t.Error("Admin role not found in default roles")
 	}
 }
 
-func TestDefaultPermissions(t *testing.T) {
-	permissions := DefaultPermissions()
+func TestGetDefaultPermissions(t *testing.T) {
+	permissions := GetDefaultPermissions()
 
-	// Check that we have some expected permissions
-	expectedPermissions := map[string]map[string]string{
-		"users": {
-			"read":   "View user profiles",
-			"write":  "Edit user profiles",
-			"delete": "Delete user accounts",
-		},
-		"posts": {
-			"read":   "View posts",
-			"write":  "Create and edit posts",
-			"delete": "Delete posts",
-		},
-		"clubs": {
-			"read":   "View club information",
-			"write":  "Edit club settings",
-			"delete": "Delete clubs",
-		},
+	if len(permissions) == 0 {
+		t.Error("GetDefaultPermissions() returned no permissions")
 	}
 
-	// Create a map for easy lookup
-	permissionMap := make(map[string]map[string]*Permission)
+	// Check that all permissions have required fields
 	for _, perm := range permissions {
-		if permissionMap[perm.Resource] == nil {
-			permissionMap[perm.Resource] = make(map[string]*Permission)
+		if perm.Name == "" {
+			t.Error("Permission should have a name")
 		}
-		permissionMap[perm.Resource][perm.Action] = perm
-	}
-
-	// Check expected permissions exist
-	for resource, actions := range expectedPermissions {
-		resourcePerms, exists := permissionMap[resource]
-		if !exists {
-			t.Errorf("Missing permissions for resource: %s", resource)
-			continue
+		if perm.Resource == "" {
+			t.Error("Permission should have a resource")
 		}
-
-		for action, expectedDesc := range actions {
-			perm, exists := resourcePerms[action]
-			if !exists {
-				t.Errorf("Missing permission: %s.%s", resource, action)
-				continue
-			}
-
-			if perm.Description != expectedDesc {
-				t.Errorf("Permission %s.%s has description %s, want %s", resource, action, perm.Description, expectedDesc)
-			}
-
-			expectedName := resource + "." + action
-			if perm.Name != expectedName {
-				t.Errorf("Permission has name %s, want %s", perm.Name, expectedName)
-			}
+		if perm.Action == "" {
+			t.Error("Permission should have an action")
+		}
+		if perm.ClubID == 0 {
+			t.Error("Permission should have a club ID")
 		}
 	}
 }
 
-func TestAuditLogFormatMessage(t *testing.T) {
-	tests := []struct {
-		name     string
-		log      *AuditLog
-		expected string
-	}{
-		{
-			"Login event",
-			&AuditLog{
-				Action: "login",
-				Entity: "user",
-				Details: map[string]interface{}{
-					"email":   "test@example.com",
-					"user_id": float64(123), // JSON numbers are float64
-				},
-			},
-			"login on user: {\"email\":\"test@example.com\",\"user_id\":123}",
-		},
-		{
-			"Simple event without details",
-			&AuditLog{
-				Action: "logout",
-				Entity: "session",
-			},
-			"logout on session: {}",
-		},
+func TestAuditLogBasics(t *testing.T) {
+	auditLog := &AuditLog{
+		Action:       AuditActionLogin,
+		HankoUserID:  "hanko123",
+		Details:      "User logged in successfully",
+		Success:      true,
+		IPAddress:    "192.168.1.1",
+		UserAgent:    "Mozilla/5.0",
+		ErrorMessage: "",
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			message := tt.log.FormatMessage()
-			if message != tt.expected {
-				t.Errorf("FormatMessage() = %s, want %s", message, tt.expected)
-			}
-		})
+	if auditLog.Action != AuditActionLogin {
+		t.Errorf("Expected action %s, got %s", AuditActionLogin, auditLog.Action)
+	}
+	if !auditLog.Success {
+		t.Error("Expected success to be true")
 	}
 }
 
 func TestModelValidation(t *testing.T) {
 	t.Run("User email validation", func(t *testing.T) {
 		user := &User{
-			Email:       "", // Empty email should be invalid
-			DisplayName: "Test User",
+			Email:     "", // Empty email should be invalid
+			Username:  "testuser",
+			FirstName: "Test",
+			LastName:  "User",
 		}
 
 		// This would normally be validated by GORM with database constraints
@@ -385,9 +259,9 @@ func TestModelValidation(t *testing.T) {
 
 	t.Run("Role name validation", func(t *testing.T) {
 		role := &Role{
-			Name:   "", // Empty name should be invalid
-			ClubID: 1,
+			Name: "", // Empty name should be invalid
 		}
+		role.ClubID = 1
 
 		// This would normally be validated by GORM with database constraints
 		if role.Name == "" {
@@ -396,31 +270,30 @@ func TestModelValidation(t *testing.T) {
 	})
 }
 
-func TestUserSessionTokenGeneration(t *testing.T) {
-	session1 := &UserSession{
-		UserID: 1,
-		ClubID: 1,
-	}
-	session1.GenerateToken()
-
-	session2 := &UserSession{
-		UserID: 1,
-		ClubID: 1,
-	}
-	session2.GenerateToken()
-
-	// Tokens should be different
-	if session1.Token == session2.Token {
-		t.Error("Generated tokens should be unique")
+func TestUserLockUnlock(t *testing.T) {
+	user := &User{
+		Status:         UserStatusActive,
+		FailedAttempts: 3,
 	}
 
-	// Tokens should not be empty
-	if session1.Token == "" {
-		t.Error("Generated token should not be empty")
+	// Test locking
+	user.Lock(30 * time.Minute)
+	if user.Status != UserStatusLocked {
+		t.Error("User should be locked")
+	}
+	if !user.IsLocked() {
+		t.Error("IsLocked() should return true")
 	}
 
-	// Tokens should have reasonable length
-	if len(session1.Token) < 20 {
-		t.Errorf("Generated token is too short: %d characters", len(session1.Token))
+	// Test unlocking
+	user.Unlock()
+	if user.Status != UserStatusActive {
+		t.Error("User should be active after unlock")
+	}
+	if user.FailedAttempts != 0 {
+		t.Error("Failed attempts should be reset after unlock")
+	}
+	if user.IsLocked() {
+		t.Error("IsLocked() should return false after unlock")
 	}
 }

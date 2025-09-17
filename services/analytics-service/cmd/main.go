@@ -37,56 +37,50 @@ func main() {
 	}
 
 	// Initialize logger
-	logger := logging.NewLogger(logging.Config{
-		Level:      cfg.Logging.Level,
-		Format:     cfg.Logging.Format,
-		Output:     cfg.Logging.Output,
-		TimeFormat: cfg.Logging.TimeFormat,
-	}, serviceName)
+	logger := logging.NewLogger(&cfg.Logging, serviceName)
 
-	logger.Info("Starting analytics-service")
+	logger.Info("Starting analytics-service", map[string]interface{}{})
 
 	// Initialize database
-	db, err := database.NewConnection(cfg.Database.GetDSN())
+	db, err := database.NewConnection(&cfg.Database, logger)
 	if err != nil {
-		logger.Fatal(fmt.Sprintf("Failed to connect to database: %v", err))
+		logger.Fatal("Failed to connect to database", map[string]interface{}{"error": err.Error()})
 	}
 
 	// Auto-migrate database schema
 	if err := db.AutoMigrate(
 		&models.Example{},
+		&repository.AnalyticsEvent{},
+		&repository.AnalyticsMetric{},
+		&repository.AnalyticsReport{},
 	); err != nil {
-		logger.Fatal(fmt.Sprintf("Failed to migrate database: %v", err))
+		logger.Fatal("Failed to migrate database", map[string]interface{}{"error": err.Error()})
 	}
 
 	// Initialize NATS client
-	natsConfig := messaging.Config{
-		URL:            cfg.NATS.URL,
-		ClusterID:      cfg.NATS.ClusterID,
-		ClientID:       cfg.NATS.ClientID + "-" + serviceName,
-		ConnectTimeout: time.Duration(cfg.NATS.ConnectTimeout) * time.Second,
-		RequestTimeout: time.Duration(cfg.NATS.RequestTimeout) * time.Second,
-		EnableJetStream: true,
-	}
-
-	natsClient, err := messaging.NewClient(natsConfig, serviceName)
+	natsClient, err := messaging.NewNATSMessageBus(&cfg.NATS, logger)
 	if err != nil {
-		logger.Fatal(fmt.Sprintf("Failed to connect to NATS: %v", err))
+		logger.Fatal("Failed to connect to NATS", map[string]interface{}{"error": err.Error()})
 	}
 	defer natsClient.Close()
 
 	// Initialize monitoring
-	monitoringService := monitoring.NewService(cfg.Monitoring, serviceName)
+	monitoringService := monitoring.NewMonitor(&cfg.Monitoring, logger, serviceName, cfg.Service.Version)
 
 	// Initialize repository
-	repo := repository.NewRepository(db, logger)
+	repo := repository.NewRepository(db.DB, logger)
 
 	// Initialize service
-	analyticsserviceService := service.NewService(repo, logger, natsClient, monitoringService)
+	analyticsService := service.NewService(repo, logger, natsClient, monitoringService)
+
+	// Start event processor
+	if err := analyticsService.StartEventProcessor(); err != nil {
+		logger.Error("Failed to start event processor", map[string]interface{}{"error": err.Error()})
+	}
 
 	// Initialize handlers
-	httpHandler := httpHandlers.NewHTTPHandler(analyticsserviceService, logger, monitoringService)
-	grpcHandler := grpcHandlers.NewGRPCHandler(analyticsserviceService, logger, monitoringService)
+	httpHandler := httpHandlers.NewHTTPHandler(analyticsService, logger, monitoringService)
+	grpcHandler := grpcHandlers.NewGRPCHandler(analyticsService, logger, monitoringService)
 
 	// Start HTTP server
 	httpServer := &http.Server{
@@ -95,9 +89,9 @@ func main() {
 	}
 
 	go func() {
-		logger.Info(fmt.Sprintf("HTTP server listening on port %d", cfg.Service.Port))
+		logger.Info("HTTP server listening", map[string]interface{}{"port": cfg.Service.Port})
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatal(fmt.Sprintf("HTTP server failed: %v", err))
+			logger.Fatal("HTTP server failed", map[string]interface{}{"error": err.Error()})
 		}
 	}()
 
@@ -108,22 +102,20 @@ func main() {
 
 	grpcListener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Service.GRPCPort))
 	if err != nil {
-		logger.Fatal(fmt.Sprintf("Failed to listen on gRPC port: %v", err))
+		logger.Fatal("Failed to listen on gRPC port", map[string]interface{}{"error": err.Error(), "port": cfg.Service.GRPCPort})
 	}
 
 	go func() {
-		logger.Info(fmt.Sprintf("gRPC server listening on port %d", cfg.Service.GRPCPort))
+		logger.Info("gRPC server listening", map[string]interface{}{"port": cfg.Service.GRPCPort})
 		if err := grpcServer.Serve(grpcListener); err != nil {
-			logger.Fatal(fmt.Sprintf("gRPC server failed: %v", err))
+			logger.Fatal("gRPC server failed", map[string]interface{}{"error": err.Error()})
 		}
 	}()
 
 	// Start monitoring server
 	go func() {
-		logger.Info(fmt.Sprintf("Metrics server listening on port %d", cfg.Monitoring.MetricsPort))
-		if err := monitoringService.Start(); err != nil {
-			logger.Error(fmt.Sprintf("Metrics server failed: %v", err))
-		}
+		logger.Info("Metrics server listening", map[string]interface{}{"port": cfg.Monitoring.MetricsPort})
+		monitoringService.StartMetricsServer()
 	}()
 
 	// Wait for interrupt signal
@@ -131,21 +123,26 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	logger.Info("Shutting down servers...")
+	logger.Info("Shutting down servers...", map[string]interface{}{})
+
+	// Stop event processor
+	if err := analyticsService.StopEventProcessor(); err != nil {
+		logger.Error("Failed to stop event processor", map[string]interface{}{"error": err.Error()})
+	}
 
 	// Graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := httpServer.Shutdown(ctx); err != nil {
-		logger.Error(fmt.Sprintf("HTTP server shutdown error: %v", err))
+		logger.Error("HTTP server shutdown error", map[string]interface{}{"error": err.Error()})
 	}
 
 	grpcServer.GracefulStop()
 
-	if sqlDB, err := db.DB(); err == nil {
+	if sqlDB, err := db.DB.DB(); err == nil {
 		sqlDB.Close()
 	}
 
-	logger.Info("Servers stopped")
+	logger.Info("Servers stopped", map[string]interface{}{})
 }

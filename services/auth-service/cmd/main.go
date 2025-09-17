@@ -102,7 +102,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	logger.Info("Shutting down auth service...")
+	logger.Info("Shutting down auth service...", map[string]interface{}{})
 
 	// Shutdown HTTP server
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -117,7 +117,7 @@ func main() {
 	grpcServer.GracefulStop()
 	grpcListener.Close()
 
-	logger.Info("Auth service stopped")
+	logger.Info("Auth service stopped", map[string]interface{}{})
 }
 
 func runMigrations(db *database.Database) error {
@@ -160,7 +160,7 @@ func startHTTPServer(cfg *config.Config, handler *handlers.HTTPHandler, logger l
 	return server
 }
 
-func startGRPCServer(cfg *config.Config, handler *handlers.GRPCHandler, logger logging.Logger) (*grpc.Server, net.Listener) {
+func startGRPCServer(cfg *config.Config, handler *handlers.AuthServiceServer, logger logging.Logger) (*grpc.Server, net.Listener) {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Service.GRPCPort))
 	if err != nil {
 		logger.Fatal("Failed to listen on gRPC port", map[string]interface{}{
@@ -170,7 +170,7 @@ func startGRPCServer(cfg *config.Config, handler *handlers.GRPCHandler, logger l
 	}
 
 	server := grpc.NewServer()
-	handler.RegisterGRPCHandlers(server)
+	handler.RegisterServer(server)
 
 	// Enable reflection for development
 	if cfg.Service.Environment != "production" {

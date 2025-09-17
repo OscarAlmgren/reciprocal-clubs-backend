@@ -18,7 +18,8 @@ func TestUserCRUD(t *testing.T) {
 	// Create user
 	user := &models.User{
 		Email:       "jane@example.com",
-		DisplayName: "Jane Doe",
+		LastName: "Doe",
+		FirstName: "Jane",
 		HankoUserID: "hanko-123",
 		Status:      models.UserStatusActive,
 	}
@@ -47,7 +48,7 @@ func TestUserCRUD(t *testing.T) {
 	}
 
 	// Update user
-	user.DisplayName = "Jane Updated"
+	user.FirstName = "Jane Updated"
 	err = repo.UpdateUser(ctx, user)
 	testutil.AssertNoError(t, err, "update user")
 

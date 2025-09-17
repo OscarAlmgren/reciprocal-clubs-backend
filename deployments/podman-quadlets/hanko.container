@@ -1,0 +1,29 @@
+[Unit]
+Description=Hanko Authentication Service for Reciprocal Clubs
+Wants=network-online.target postgres.service redis.service hanko-migrate.service
+After=network-online.target postgres.service redis.service hanko-migrate.service
+RequiresMountsFor=%t/containers
+
+[Container]
+Image=docker.io/teamhanko/hanko:latest
+ContainerName=reciprocal-hanko
+Exec=serve --config /etc/config/config.yaml all
+Environment=PASSWORD_ENABLED=true
+PublishPort=8000:8000
+PublishPort=8001:8001
+Volume=%h/.config/reciprocal-clubs/hanko:/etc/config:ro,Z
+Network=reciprocal-clubs.network
+HealthCmd=wget --no-verbose --tries=1 --spider http://localhost:8000/health || exit 1
+HealthInterval=10s
+HealthTimeout=5s
+HealthRetries=5
+HealthStartPeriod=30s
+AutoUpdate=registry
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

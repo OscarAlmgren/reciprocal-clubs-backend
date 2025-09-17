@@ -2,10 +2,11 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
-	"reciprocal-clubs-backend/pkg/shared/errors"
+	apperrors "reciprocal-clubs-backend/pkg/shared/errors"
 	"reciprocal-clubs-backend/pkg/shared/logging"
 	"reciprocal-clubs-backend/pkg/shared/monitoring"
 	"reciprocal-clubs-backend/services/auth-service/internal/service"
@@ -85,7 +86,7 @@ func (h *HTTPHandler) register(w http.ResponseWriter, r *http.Request) {
 
 	var req service.RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.handleError(w, errors.InvalidInput("Invalid request body", nil, err))
+		h.handleError(w, apperrors.InvalidInput("Invalid request body", nil, err))
 		return
 	}
 
@@ -110,7 +111,7 @@ func (h *HTTPHandler) initiatePasskeyLogin(w http.ResponseWriter, r *http.Reques
 
 	var req service.LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.handleError(w, errors.InvalidInput("Invalid request body", nil, err))
+		h.handleError(w, apperrors.InvalidInput("Invalid request body", nil, err))
 		return
 	}
 
@@ -139,7 +140,7 @@ func (h *HTTPHandler) completePasskeyLogin(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.handleError(w, errors.InvalidInput("Invalid request body", nil, err))
+		h.handleError(w, apperrors.InvalidInput("Invalid request body", nil, err))
 		return
 	}
 
@@ -169,7 +170,7 @@ func (h *HTTPHandler) logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.handleError(w, errors.InvalidInput("Invalid request body", nil, err))
+		h.handleError(w, apperrors.InvalidInput("Invalid request body", nil, err))
 		return
 	}
 
@@ -201,7 +202,7 @@ func (h *HTTPHandler) initiatePasskeyRegistration(w http.ResponseWriter, r *http
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.handleError(w, errors.InvalidInput("Invalid request body", nil, err))
+		h.handleError(w, apperrors.InvalidInput("Invalid request body", nil, err))
 		return
 	}
 
@@ -229,7 +230,7 @@ func (h *HTTPHandler) validateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.handleError(w, errors.InvalidInput("Invalid request body", nil, err))
+		h.handleError(w, apperrors.InvalidInput("Invalid request body", nil, err))
 		return
 	}
 
@@ -255,13 +256,13 @@ func (h *HTTPHandler) getUserWithRoles(w http.ResponseWriter, r *http.Request) {
 
 	clubID, err := strconv.ParseUint(vars["clubId"], 10, 32)
 	if err != nil {
-		h.handleError(w, errors.InvalidInput("Invalid club ID", nil, err))
+		h.handleError(w, apperrors.InvalidInput("Invalid club ID", nil, err))
 		return
 	}
 
 	userID, err := strconv.ParseUint(vars["userId"], 10, 32)
 	if err != nil {
-		h.handleError(w, errors.InvalidInput("Invalid user ID", nil, err))
+		h.handleError(w, apperrors.InvalidInput("Invalid user ID", nil, err))
 		return
 	}
 
@@ -279,7 +280,7 @@ func (h *HTTPHandler) getUserWithRoles(w http.ResponseWriter, r *http.Request) {
 // Webhook handlers
 
 func (h *HTTPHandler) handleHankoWebhook(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	_ = r.Context()
 
 	// Read webhook payload
 	var payload map[string]interface{}
@@ -350,7 +351,7 @@ func (h *HTTPHandler) handleHankoWebhook(w http.ResponseWriter, r *http.Request)
 // Error handling
 
 func (h *HTTPHandler) handleError(w http.ResponseWriter, err error) {
-	var appErr *errors.AppError
+	var appErr *apperrors.AppError
 	if errors.As(err, &appErr) {
 		statusCode := h.getHTTPStatusCode(appErr.Code)
 		
@@ -384,21 +385,21 @@ func (h *HTTPHandler) handleError(w http.ResponseWriter, err error) {
 	})
 }
 
-func (h *HTTPHandler) getHTTPStatusCode(errorCode errors.ErrorCode) int {
+func (h *HTTPHandler) getHTTPStatusCode(errorCode apperrors.ErrorCode) int {
 	switch errorCode {
-	case errors.ErrNotFound:
+	case apperrors.ErrNotFound:
 		return http.StatusNotFound
-	case errors.ErrInvalidInput:
+	case apperrors.ErrInvalidInput:
 		return http.StatusBadRequest
-	case errors.ErrUnauthorized:
+	case apperrors.ErrUnauthorized:
 		return http.StatusUnauthorized
-	case errors.ErrForbidden:
+	case apperrors.ErrForbidden:
 		return http.StatusForbidden
-	case errors.ErrConflict:
+	case apperrors.ErrConflict:
 		return http.StatusConflict
-	case errors.ErrTimeout:
+	case apperrors.ErrTimeout:
 		return http.StatusRequestTimeout
-	case errors.ErrUnavailable:
+	case apperrors.ErrUnavailable:
 		return http.StatusServiceUnavailable
 	default:
 		return http.StatusInternalServerError

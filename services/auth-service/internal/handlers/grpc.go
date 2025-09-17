@@ -2,18 +2,16 @@ package handlers
 
 import (
 	"context"
-	"time"
+	"errors"
 
-	"reciprocal-clubs-backend/pkg/shared/errors"
+	apperrors "reciprocal-clubs-backend/pkg/shared/errors"
 	"reciprocal-clubs-backend/pkg/shared/logging"
 	"reciprocal-clubs-backend/pkg/shared/monitoring"
-	"reciprocal-clubs-backend/services/auth-service/internal/models"
 	"reciprocal-clubs-backend/services/auth-service/internal/service"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // AuthServiceServer is the gRPC server implementation
@@ -44,9 +42,11 @@ func (s *AuthServiceServer) RegisterServer(server *grpc.Server) {
 // RegisterUser creates a new user account with passkey setup
 func (s *AuthServiceServer) RegisterUser(ctx context.Context, req *RegisterUserRequest) (*RegisterUserResponse, error) {
 	serviceReq := &service.RegisterRequest{
-		Email:       req.Email,
-		DisplayName: req.DisplayName,
-		ClubSlug:    req.ClubSlug,
+		Email:     req.Email,
+		Username:  req.Username,
+		FirstName: req.FirstName,
+		LastName:  req.LastName,
+		ClubSlug:  req.ClubSlug,
 	}
 
 	response, err := s.service.Register(ctx, serviceReq)
@@ -60,9 +60,8 @@ func (s *AuthServiceServer) RegisterUser(ctx context.Context, req *RegisterUserR
 	})
 
 	return &RegisterUserResponse{
-		User:             s.convertUserToProto(response.User),
-		RegistrationData: response.RegistrationData,
-		Success:          true,
+		User:    s.convertUserToProto(response.User),
+		Success: true,
 	}, nil
 }
 
@@ -73,7 +72,7 @@ func (s *AuthServiceServer) InitiatePasskeyLogin(ctx context.Context, req *Initi
 		ClubSlug: req.ClubSlug,
 	}
 
-	response, err := s.service.InitiatePasskeyLogin(ctx, serviceReq)
+	response, err := s.service.InitiatePasskeyAuthentication(ctx, serviceReq)
 	if err != nil {
 		return nil, s.handleError(err)
 	}
@@ -83,15 +82,14 @@ func (s *AuthServiceServer) InitiatePasskeyLogin(ctx context.Context, req *Initi
 	})
 
 	return &InitiatePasskeyLoginResponse{
-		Challenge:    response.Challenge,
-		HankoUserId:  response.HankoUserID,
-		LoginData:    response.LoginData,
+		Options: response.Options,
+		UserID:  response.UserID,
 	}, nil
 }
 
 // CompletePasskeyLogin completes the passkey authentication process
 func (s *AuthServiceServer) CompletePasskeyLogin(ctx context.Context, req *CompletePasskeyLoginRequest) (*CompletePasskeyLoginResponse, error) {
-	response, err := s.service.CompletePasskeyLogin(ctx, req.ClubSlug, req.HankoUserId, req.CredentialResult)
+	response, err := s.service.CompletePasskeyAuthentication(ctx, req.ClubSlug, req.UserID, req.CredentialResult)
 	if err != nil {
 		return nil, s.handleError(err)
 	}
@@ -103,9 +101,9 @@ func (s *AuthServiceServer) CompletePasskeyLogin(ctx context.Context, req *Compl
 
 	return &CompletePasskeyLoginResponse{
 		User:         s.convertUserToProto(response.User),
-		SessionToken: response.SessionToken,
-		ExpiresAt:    timestamppb.New(response.ExpiresAt),
-		Success:      true,
+		Token:        response.Token,
+		RefreshToken: response.RefreshToken,
+		ExpiresAt:    &response.ExpiresAt,
 	}, nil
 }
 
@@ -123,7 +121,6 @@ func (s *AuthServiceServer) Logout(ctx context.Context, req *LogoutRequest) (*Lo
 
 	return &LogoutResponse{
 		Success: true,
-		Message: "Logged out successfully",
 	}, nil
 }
 
@@ -153,8 +150,7 @@ func (s *AuthServiceServer) InitiatePasskeyRegistration(ctx context.Context, req
 	})
 
 	return &InitiatePasskeyRegistrationResponse{
-		Challenge:        response.Challenge,
-		RegistrationData: response.RegistrationData,
+		Options: response.Options,
 	}, nil
 }
 
@@ -179,10 +175,26 @@ func (s *AuthServiceServer) GetUserWithRoles(ctx context.Context, req *GetUserWi
 		return nil, s.handleError(err)
 	}
 
+	// Convert role names to ProtoRole objects
+	protoRoles := make([]*ProtoRole, len(userWithRoles.RoleNames))
+	for i, roleName := range userWithRoles.RoleNames {
+		protoRoles[i] = &ProtoRole{
+			Name: roleName,
+		}
+	}
+
+	// Convert permission names to ProtoPermission objects
+	protoPermissions := make([]*ProtoPermission, len(userWithRoles.Permissions))
+	for i, permissionName := range userWithRoles.Permissions {
+		protoPermissions[i] = &ProtoPermission{
+			Name: permissionName,
+		}
+	}
+
 	return &GetUserWithRolesResponse{
 		User:        s.convertUserToProto(&userWithRoles.User),
-		Roles:       s.convertRolesToProto(userWithRoles.Roles),
-		Permissions: s.convertPermissionsToProto(userWithRoles.Permissions),
+		Roles:       protoRoles,
+		Permissions: protoPermissions,
 	}, nil
 }
 
@@ -206,60 +218,14 @@ func (s *AuthServiceServer) HealthCheck(ctx context.Context, req *HealthCheckReq
 
 // Helper methods for converting between service models and protobuf messages
 
-func (s *AuthServiceServer) convertUserToProto(user *models.User) *User {
-	if user == nil {
-		return nil
-	}
-
-	return &User{
-		Id:          uint64(user.ID),
-		Email:       user.Email,
-		DisplayName: user.DisplayName,
-		HankoUserId: user.HankoUserID,
-		Status:      string(user.Status),
-		CreatedAt:   timestamppb.New(user.CreatedAt),
-		UpdatedAt:   timestamppb.New(user.UpdatedAt),
-	}
-}
-
-func (s *AuthServiceServer) convertRolesToProto(roles []models.Role) []*Role {
-	protoRoles := make([]*Role, len(roles))
-	for i, role := range roles {
-		protoRoles[i] = &Role{
-			Id:          uint64(role.ID),
-			Name:        role.Name,
-			Description: role.Description,
-			ClubId:      uint64(role.ClubID),
-			CreatedAt:   timestamppb.New(role.CreatedAt),
-			UpdatedAt:   timestamppb.New(role.UpdatedAt),
-		}
-	}
-	return protoRoles
-}
-
-func (s *AuthServiceServer) convertPermissionsToProto(permissions []models.Permission) []*Permission {
-	protoPermissions := make([]*Permission, len(permissions))
-	for i, permission := range permissions {
-		protoPermissions[i] = &Permission{
-			Id:          uint64(permission.ID),
-			Name:        permission.Name,
-			Description: permission.Description,
-			Resource:    permission.Resource,
-			Action:      permission.Action,
-			CreatedAt:   timestamppb.New(permission.CreatedAt),
-			UpdatedAt:   timestamppb.New(permission.UpdatedAt),
-		}
-	}
-	return protoPermissions
-}
 
 // Error handling
 
 func (s *AuthServiceServer) handleError(err error) error {
-	var appErr *errors.AppError
+	var appErr *apperrors.AppError
 	if errors.As(err, &appErr) {
 		grpcCode := s.getGRPCStatusCode(appErr.Code)
-		
+
 		s.logger.Error("gRPC request failed", map[string]interface{}{
 			"error":       appErr.Error(),
 			"error_code":  string(appErr.Code),
@@ -278,148 +244,24 @@ func (s *AuthServiceServer) handleError(err error) error {
 	return status.Error(codes.Internal, "Internal server error")
 }
 
-func (s *AuthServiceServer) getGRPCStatusCode(errorCode errors.ErrorCode) codes.Code {
+func (s *AuthServiceServer) getGRPCStatusCode(errorCode apperrors.ErrorCode) codes.Code {
 	switch errorCode {
-	case errors.ErrNotFound:
+	case apperrors.ErrNotFound:
 		return codes.NotFound
-	case errors.ErrInvalidInput:
+	case apperrors.ErrInvalidInput:
 		return codes.InvalidArgument
-	case errors.ErrUnauthorized:
+	case apperrors.ErrUnauthorized:
 		return codes.Unauthenticated
-	case errors.ErrForbidden:
+	case apperrors.ErrForbidden:
 		return codes.PermissionDenied
-	case errors.ErrConflict:
+	case apperrors.ErrConflict:
 		return codes.AlreadyExists
-	case errors.ErrTimeout:
+	case apperrors.ErrTimeout:
 		return codes.DeadlineExceeded
-	case errors.ErrUnavailable:
+	case apperrors.ErrUnavailable:
 		return codes.Unavailable
 	default:
 		return codes.Internal
 	}
 }
 
-// Protobuf message structs (these would normally be generated from .proto files)
-// Including them here as placeholders for the actual generated code
-
-type RegisterUserRequest struct {
-	Email       string `json:"email"`
-	DisplayName string `json:"display_name"`
-	ClubSlug    string `json:"club_slug"`
-}
-
-type RegisterUserResponse struct {
-	User             *User                  `json:"user"`
-	RegistrationData map[string]interface{} `json:"registration_data"`
-	Success          bool                   `json:"success"`
-}
-
-type InitiatePasskeyLoginRequest struct {
-	Email    string `json:"email"`
-	ClubSlug string `json:"club_slug"`
-}
-
-type InitiatePasskeyLoginResponse struct {
-	Challenge    string                 `json:"challenge"`
-	HankoUserId  string                 `json:"hanko_user_id"`
-	LoginData    map[string]interface{} `json:"login_data"`
-}
-
-type CompletePasskeyLoginRequest struct {
-	ClubSlug         string                 `json:"club_slug"`
-	HankoUserId      string                 `json:"hanko_user_id"`
-	CredentialResult map[string]interface{} `json:"credential_result"`
-}
-
-type CompletePasskeyLoginResponse struct {
-	User         *User                  `json:"user"`
-	SessionToken string                 `json:"session_token"`
-	ExpiresAt    *timestamppb.Timestamp `json:"expires_at"`
-	Success      bool                   `json:"success"`
-}
-
-type LogoutRequest struct {
-	UserId       uint64 `json:"user_id"`
-	ClubId       uint64 `json:"club_id"`
-	SessionToken string `json:"session_token"`
-}
-
-type LogoutResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-}
-
-type ValidateSessionRequest struct {
-	SessionToken string `json:"session_token"`
-}
-
-type ValidateSessionResponse struct {
-	Valid bool  `json:"valid"`
-	User  *User `json:"user"`
-}
-
-type InitiatePasskeyRegistrationRequest struct {
-	UserId uint64 `json:"user_id"`
-	ClubId uint64 `json:"club_id"`
-}
-
-type InitiatePasskeyRegistrationResponse struct {
-	Challenge        string                 `json:"challenge"`
-	RegistrationData map[string]interface{} `json:"registration_data"`
-}
-
-type GetUserRequest struct {
-	ClubId uint64 `json:"club_id"`
-	UserId uint64 `json:"user_id"`
-}
-
-type GetUserResponse struct {
-	User *User `json:"user"`
-}
-
-type GetUserWithRolesRequest struct {
-	ClubId uint64 `json:"club_id"`
-	UserId uint64 `json:"user_id"`
-}
-
-type GetUserWithRolesResponse struct {
-	User        *User         `json:"user"`
-	Roles       []*Role       `json:"roles"`
-	Permissions []*Permission `json:"permissions"`
-}
-
-type HealthCheckRequest struct{}
-
-type HealthCheckResponse struct {
-	Status  string `json:"status"`
-	Message string `json:"message"`
-}
-
-type User struct {
-	Id          uint64                 `json:"id"`
-	Email       string                 `json:"email"`
-	DisplayName string                 `json:"display_name"`
-	HankoUserId string                 `json:"hanko_user_id"`
-	Status      string                 `json:"status"`
-	CreatedAt   *timestamppb.Timestamp `json:"created_at"`
-	UpdatedAt   *timestamppb.Timestamp `json:"updated_at"`
-}
-
-type Role struct {
-	Id          uint64                 `json:"id"`
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	ClubId      uint64                 `json:"club_id"`
-	CreatedAt   *timestamppb.Timestamp `json:"created_at"`
-	UpdatedAt   *timestamppb.Timestamp `json:"updated_at"`
-}
-
-type Permission struct {
-	Id          uint64                 `json:"id"`
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	Resource    string                 `json:"resource"`
-	Action      string                 `json:"action"`
-	CreatedAt   *timestamppb.Timestamp `json:"created_at"`
-	UpdatedAt   *timestamppb.Timestamp `json:"updated_at"`
-}

@@ -421,7 +421,7 @@ func (s *AuthService) Logout(ctx context.Context, userID, clubID uint, sessionTo
 	}
 
 	// Get session by token
-	session, err := s.repo.GetSessionByHankoID(ctx, clubID, sessionToken)
+	_, err = s.repo.GetSessionByHankoID(ctx, clubID, sessionToken)
 	if err != nil {
 		// Session not found, but still invalidate in Hanko
 		s.hankoClient.InvalidateSession(ctx, sessionToken)
@@ -562,6 +562,21 @@ func (s *AuthService) getUserAgentFromContext(ctx context.Context) string {
 		return ua
 	}
 	return "unknown"
+}
+
+// GetUser retrieves a user by ID
+func (s *AuthService) GetUser(ctx context.Context, clubID, userID uint) (*models.User, error) {
+	return s.repo.GetUserByID(ctx, clubID, userID)
+}
+
+// InitiatePasskeyAuthentication is a wrapper for InitiatePasskeyLogin to match gRPC interface
+func (s *AuthService) InitiatePasskeyAuthentication(ctx context.Context, req *LoginRequest) (*PasskeyResponse, error) {
+	return s.InitiatePasskeyLogin(ctx, req)
+}
+
+// CompletePasskeyAuthentication is a wrapper for CompletePasskeyLogin to match gRPC interface
+func (s *AuthService) CompletePasskeyAuthentication(ctx context.Context, clubSlug string, hankoUserID string, credentialResult map[string]interface{}) (*AuthResponse, error) {
+	return s.CompletePasskeyLogin(ctx, clubSlug, hankoUserID, credentialResult)
 }
 
 // HealthCheck performs health check on dependencies
