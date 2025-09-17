@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"reciprocal-clubs-backend/pkg/shared/config"
 	"reciprocal-clubs-backend/pkg/shared/logging"
 	"reciprocal-clubs-backend/pkg/shared/messaging"
 	"reciprocal-clubs-backend/pkg/shared/monitoring"
@@ -186,7 +187,7 @@ func NewMockHankoClient() *MockHankoClient {
 	}
 }
 
-func (m *MockHankoClient) CreateUser(ctx context.Context, email, displayName string) (*hanko.HankoUser, error) {
+func (m *MockHankoClient) CreateUser(ctx context.Context, email string) (*hanko.HankoUser, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -372,6 +373,29 @@ func (m *MockHankoClient) GetUserCount() int {
 	return len(m.users)
 }
 
+func (m *MockHankoClient) GetUserByEmail(ctx context.Context, email string) (*hanko.HankoUser, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for _, user := range m.users {
+		if user.Email == email {
+			return user, nil
+		}
+	}
+	return nil, fmt.Errorf("user not found")
+}
+
+func (m *MockHankoClient) InvalidateSession(ctx context.Context, sessionID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.sessions, sessionID)
+	return nil
+}
+
+func (m *MockHankoClient) HealthCheck(ctx context.Context) error {
+	return nil
+}
+
 func (m *MockHankoClient) Clear() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -379,4 +403,31 @@ func (m *MockHankoClient) Clear() {
 	m.sessions = make(map[string]*hanko.HankoSession)
 	m.challenges = make(map[string]string)
 	m.shouldFail = make(map[string]bool)
+}
+
+// NewMockConfig creates a mock config for testing
+func NewMockConfig() *config.Config {
+	return &config.Config{
+		Service: config.ServiceConfig{
+			Name:        "auth-service",
+			Version:     "1.0.0",
+			Environment: "test",
+			Port:        8080,
+		},
+		Auth: config.AuthConfig{
+			JWTSecret:    "test-jwt-secret",
+			JWTExpiration: 3600,
+		},
+		Database: config.DatabaseConfig{
+			Host:            "localhost",
+			Port:            5432,
+			Database:        "test_db",
+			User:            "test_user",
+			Password:        "test_pass",
+			SSLMode:         "disable",
+			MaxOpenConns:    10,
+			MaxIdleConns:    5,
+			ConnMaxLifetime: 300,
+		},
+	}
 }

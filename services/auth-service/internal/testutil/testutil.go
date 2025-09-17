@@ -144,13 +144,14 @@ func (tdb *TestDB) SeedTestData(t *testing.T) *TestData {
 	adminRole := &models.Role{
 		Name:        "admin",
 		Description: "Administrator role",
-		ClubID:      club.ID,
 	}
+	adminRole.ClubID = club.ID
+
 	userRole := &models.Role{
 		Name:        "user",
 		Description: "Regular user role",
-		ClubID:      club.ID,
 	}
+	userRole.ClubID = club.ID
 
 	if err := tdb.DB.Create([]*models.Role{adminRole, userRole}).Error; err != nil {
 		t.Fatalf("Failed to create test roles: %v", err)
@@ -175,16 +176,23 @@ func (tdb *TestDB) SeedTestData(t *testing.T) *TestData {
 	// Create test users
 	adminUser := &models.User{
 		Email:       "admin@test.com",
-		DisplayName: "Test Admin",
+		Username:    "testadmin",
+		FirstName:   "Test",
+		LastName:    "Admin",
 		HankoUserID: "hanko-admin-123",
 		Status:      models.UserStatusActive,
 	}
+	adminUser.ClubID = club.ID
+
 	regularUser := &models.User{
 		Email:       "user@test.com",
-		DisplayName: "Test User",
+		Username:    "testuser",
+		FirstName:   "Test",
+		LastName:    "User",
 		HankoUserID: "hanko-user-456",
 		Status:      models.UserStatusActive,
 	}
+	regularUser.ClubID = club.ID
 
 	if err := tdb.DB.Create([]*models.User{adminUser, regularUser}).Error; err != nil {
 		t.Fatalf("Failed to create test users: %v", err)
@@ -192,8 +200,11 @@ func (tdb *TestDB) SeedTestData(t *testing.T) *TestData {
 
 	// Assign roles to users
 	userRoles := []*models.UserRole{
-		{UserID: adminUser.ID, RoleID: adminRole.ID, ClubID: club.ID},
-		{UserID: regularUser.ID, RoleID: userRole.ID, ClubID: club.ID},
+		{UserID: adminUser.ID, RoleID: adminRole.ID},
+		{UserID: regularUser.ID, RoleID: userRole.ID},
+	}
+	for _, userRole := range userRoles {
+		userRole.ClubID = club.ID
 	}
 
 	if err := tdb.DB.Create(userRoles).Error; err != nil {
@@ -223,18 +234,20 @@ type TestData struct {
 }
 
 // CreateTestUser creates a test user with the given parameters
-func CreateTestUser(db *gorm.DB, email, displayName, hankoUserID string) *models.User {
+func CreateTestUser(db *gorm.DB, email, username, hankoUserID string) *models.User {
 	user := &models.User{
 		Email:       email,
-		DisplayName: displayName,
+		Username:    username,
+		FirstName:   "Test",
+		LastName:    "User",
 		HankoUserID: hankoUserID,
 		Status:      models.UserStatusActive,
 	}
-	
+
 	if err := db.Create(user).Error; err != nil {
 		panic(fmt.Sprintf("Failed to create test user: %v", err))
 	}
-	
+
 	return user
 }
 
@@ -257,17 +270,18 @@ func CreateTestClub(db *gorm.DB, name, slug string) *models.Club {
 // CreateTestSession creates a test session for the given user
 func CreateTestSession(db *gorm.DB, userID, clubID uint) *models.UserSession {
 	session := &models.UserSession{
-		UserID:    userID,
-		ClubID:    clubID,
-		Token:     fmt.Sprintf("test-token-%d-%d", userID, time.Now().UnixNano()),
-		ExpiresAt: time.Now().Add(24 * time.Hour),
-		Status:    models.SessionStatusActive,
+		UserID:         userID,
+		HankoSessionID: fmt.Sprintf("test-hanko-session-%d-%d", userID, time.Now().UnixNano()),
+		JWTToken:       fmt.Sprintf("test-jwt-token-%d-%d", userID, time.Now().UnixNano()),
+		ExpiresAt:      time.Now().Add(24 * time.Hour),
+		IsActive:       true,
 	}
-	
+	session.ClubID = clubID
+
 	if err := db.Create(session).Error; err != nil {
 		panic(fmt.Sprintf("Failed to create test session: %v", err))
 	}
-	
+
 	return session
 }
 

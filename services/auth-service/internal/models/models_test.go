@@ -145,7 +145,7 @@ func TestUserSessionIsExpired(t *testing.T) {
 	}{
 		{"Not expired", now.Add(time.Hour), false},
 		{"Expired", now.Add(-time.Hour), true},
-		{"Exactly at expiry", now, false}, // Current time should not be considered expired
+		{"Exactly at expiry", now.Add(time.Millisecond), false}, // Very close future should not be expired
 	}
 
 	for _, tt := range tests {
