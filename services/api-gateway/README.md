@@ -61,7 +61,7 @@ The API Gateway is the main entry point for the reciprocal clubs backend system,
 
 ### Prerequisites
 
-- Go 1.21+
+- Go 1.25+
 - gqlgen CLI: `go install github.com/99designs/gqlgen@latest`
 - NATS server running
 - Backend services running (for full functionality)

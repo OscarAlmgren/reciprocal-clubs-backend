@@ -48,7 +48,7 @@ The Auth Service is built with a clean architecture pattern:
 
 ### Prerequisites
 
-- Go 1.21+
+- Go 1.25+
 - Docker and Docker Compose
 - PostgreSQL 15+
 - NATS 2.10+
