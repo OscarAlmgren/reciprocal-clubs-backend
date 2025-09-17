@@ -1,6 +1,6 @@
 module reciprocal-clubs-backend/services/notification-service
 
-go 1.21
+go 1.25
 
 require (
 	google.golang.org/grpc v1.59.0
