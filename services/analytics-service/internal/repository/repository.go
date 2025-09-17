@@ -89,7 +89,7 @@ func NewRepository(db *gorm.DB, logger logging.Logger) Repository {
 func (r *repository) IsHealthy() bool {
 	sqlDB, err := r.db.DB()
 	if err != nil {
-		r.logger.Error("Failed to get database connection: " + err.Error())
+		r.logger.Error("Failed to get database connection", map[string]interface{}{"error": err.Error()})
 		return false
 	}
 
@@ -102,11 +102,11 @@ func (r *repository) RecordEvent(event *AnalyticsEvent) error {
 	}
 
 	if err := r.db.Create(event).Error; err != nil {
-		r.logger.Error("Failed to record analytics event: " + err.Error())
+		r.logger.Error("Failed to record analytics event", map[string]interface{}{"error": err.Error()})
 		return fmt.Errorf("failed to record event: %w", err)
 	}
 
-	r.logger.Info(fmt.Sprintf("Recorded analytics event: %s for club %s", event.EventType, event.ClubID))
+	r.logger.Info("Recorded analytics event", map[string]interface{}{"event_type": event.EventType, "club_id": event.ClubID})
 	return nil
 }
 
@@ -122,7 +122,7 @@ func (r *repository) GetMetricsByClub(clubID string, timeRange TimeRange) ([]*An
 	}
 
 	if err := query.Find(&metrics).Error; err != nil {
-		r.logger.Error("Failed to get metrics: " + err.Error())
+		r.logger.Error("Failed to get metrics", map[string]interface{}{"error": err.Error()})
 		return nil, fmt.Errorf("failed to get metrics: %w", err)
 	}
 
@@ -138,7 +138,7 @@ func (r *repository) GetReportsByClub(clubID string, reportType string) ([]*Anal
 	}
 
 	if err := query.Order("generated_at DESC").Find(&reports).Error; err != nil {
-		r.logger.Error("Failed to get reports: " + err.Error())
+		r.logger.Error("Failed to get reports", map[string]interface{}{"error": err.Error()})
 		return nil, fmt.Errorf("failed to get reports: %w", err)
 	}
 
@@ -181,7 +181,7 @@ func (r *repository) AggregateMetrics(clubID string, timeRange TimeRange) (map[s
 // Example operations (replace with actual business logic)
 func (r *repository) CreateExample(example *models.Example) error {
 	if err := r.db.Create(example).Error; err != nil {
-		r.logger.Error("Failed to create example: " + err.Error())
+		r.logger.Error("Failed to create example", map[string]interface{}{"error": err.Error()})
 		return fmt.Errorf("failed to create example: %w", err)
 	}
 	return nil
@@ -193,7 +193,7 @@ func (r *repository) GetExampleByID(id uint) (*models.Example, error) {
 		if err == gorm.ErrRecordNotFound {
 			return nil, fmt.Errorf("example not found")
 		}
-		r.logger.Error("Failed to get example: " + err.Error())
+		r.logger.Error("Failed to get example", map[string]interface{}{"error": err.Error()})
 		return nil, fmt.Errorf("failed to get example: %w", err)
 	}
 	return &example, nil
@@ -201,7 +201,7 @@ func (r *repository) GetExampleByID(id uint) (*models.Example, error) {
 
 func (r *repository) UpdateExample(example *models.Example) error {
 	if err := r.db.Save(example).Error; err != nil {
-		r.logger.Error("Failed to update example: " + err.Error())
+		r.logger.Error("Failed to update example", map[string]interface{}{"error": err.Error()})
 		return fmt.Errorf("failed to update example: %w", err)
 	}
 	return nil
@@ -209,7 +209,7 @@ func (r *repository) UpdateExample(example *models.Example) error {
 
 func (r *repository) DeleteExample(id uint) error {
 	if err := r.db.Delete(&models.Example{}, id).Error; err != nil {
-		r.logger.Error("Failed to delete example: " + err.Error())
+		r.logger.Error("Failed to delete example", map[string]interface{}{"error": err.Error()})
 		return fmt.Errorf("failed to delete example: %w", err)
 	}
 	return nil
@@ -218,7 +218,7 @@ func (r *repository) DeleteExample(id uint) error {
 func (r *repository) ListExamples(limit, offset int) ([]*models.Example, error) {
 	var examples []*models.Example
 	if err := r.db.Limit(limit).Offset(offset).Find(&examples).Error; err != nil {
-		r.logger.Error("Failed to list examples: " + err.Error())
+		r.logger.Error("Failed to list examples", map[string]interface{}{"error": err.Error()})
 		return nil, fmt.Errorf("failed to list examples: %w", err)
 	}
 	return examples, nil

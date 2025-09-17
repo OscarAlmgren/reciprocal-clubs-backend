@@ -82,7 +82,7 @@ func main() {
 
 	// Initialize handlers
 	httpHandler := handlers.NewHTTPHandler(authService, logger, monitor)
-	grpcHandler := handlers.NewGRPCHandler(authService, logger)
+	grpcHandler := handlers.NewGRPCHandler(authService, logger, monitor)
 
 	// Start HTTP server
 	httpServer := startHTTPServer(cfg, httpHandler, logger)
