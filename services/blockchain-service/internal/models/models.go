@@ -2,335 +2,356 @@ package models
 
 import (
 	"encoding/json"
-	"math/big"
 	"time"
 	"gorm.io/gorm"
 )
 
-// TransactionStatus represents the status of a blockchain transaction
-type TransactionStatus string
+// FabricTransactionStatus represents the status of a Hyperledger Fabric transaction
+type FabricTransactionStatus string
 
 const (
-	TransactionStatusPending   TransactionStatus = "pending"
-	TransactionStatusSubmitted TransactionStatus = "submitted"
-	TransactionStatusConfirmed TransactionStatus = "confirmed"
-	TransactionStatusFailed    TransactionStatus = "failed"
-	TransactionStatusExpired   TransactionStatus = "expired"
+	FabricTransactionStatusPending   FabricTransactionStatus = "pending"
+	FabricTransactionStatusSubmitted FabricTransactionStatus = "submitted"
+	FabricTransactionStatusConfirmed FabricTransactionStatus = "confirmed"
+	FabricTransactionStatusFailed    FabricTransactionStatus = "failed"
+	FabricTransactionStatusExpired   FabricTransactionStatus = "expired"
 )
 
-// TransactionType represents the type of blockchain transaction
-type TransactionType string
+// FabricTransactionType represents the type of blockchain transaction
+type FabricTransactionType string
 
 const (
-	TransactionTypeTransfer          TransactionType = "transfer"
-	TransactionTypeMint              TransactionType = "mint"
-	TransactionTypeBurn              TransactionType = "burn"
-	TransactionTypeStake             TransactionType = "stake"
-	TransactionTypeUnstake           TransactionType = "unstake"
-	TransactionTypeClaimRewards      TransactionType = "claim_rewards"
-	TransactionTypeCreateAgreement   TransactionType = "create_agreement"
-	TransactionTypeActivateAgreement TransactionType = "activate_agreement"
-	TransactionTypeRecordVisit       TransactionType = "record_visit"
+	FabricTransactionTypeMemberRegistration FabricTransactionType = "member_registration"
+	FabricTransactionTypeVisitRecord        FabricTransactionType = "visit_record"
+	FabricTransactionTypeAgreementCreation  FabricTransactionType = "agreement_creation"
+	FabricTransactionTypePaymentRecord      FabricTransactionType = "payment_record"
+	FabricTransactionTypeQuery              FabricTransactionType = "query"
+	FabricTransactionTypeInvoke             FabricTransactionType = "invoke"
 )
 
-// Network represents different blockchain networks
-type Network string
+// ChannelType represents different Fabric channel types
+type ChannelType string
 
 const (
-	NetworkEthereum  Network = "ethereum"
-	NetworkPolygon   Network = "polygon"
-	NetworkBSC       Network = "bsc"
-	NetworkArbitrum  Network = "arbitrum"
-	NetworkOptimism  Network = "optimism"
-	NetworkLocalhost Network = "localhost"
+	ChannelTypeReciprocal ChannelType = "reciprocal"
+	ChannelTypeGovernance ChannelType = "governance"
+	ChannelTypeAudit      ChannelType = "audit"
+	ChannelTypePayments   ChannelType = "payments"
 )
 
-// Transaction represents a blockchain transaction
-type Transaction struct {
-	ID                uint              `json:"id" gorm:"primaryKey"`
-	ClubID            uint              `json:"club_id" gorm:"not null;index"`
-	UserID            string            `json:"user_id" gorm:"size:255;index"`
-	Network           Network           `json:"network" gorm:"size:50;not null"`
-	Type              TransactionType   `json:"type" gorm:"size:100;not null"`
-	Status            TransactionStatus `json:"status" gorm:"size:50;default:'pending'"`
-	Hash              string            `json:"hash,omitempty" gorm:"size:255;uniqueIndex"`
-	FromAddress       string            `json:"from_address" gorm:"size:255"`
-	ToAddress         string            `json:"to_address" gorm:"size:255"`
-	Value             string            `json:"value" gorm:"type:text"` // Store as string to handle big numbers
-	GasLimit          uint64            `json:"gas_limit"`
-	GasPrice          string            `json:"gas_price" gorm:"type:text"`
-	GasUsed           uint64            `json:"gas_used,omitempty"`
-	Nonce             uint64            `json:"nonce"`
-	Data              string            `json:"data,omitempty" gorm:"type:text"`
-	BlockNumber       uint64            `json:"block_number,omitempty"`
-	BlockHash         string            `json:"block_hash,omitempty" gorm:"size:255"`
-	TransactionIndex  uint              `json:"transaction_index,omitempty"`
-	ConfirmationCount uint              `json:"confirmation_count" gorm:"default:0"`
-	ErrorMessage      string            `json:"error_message,omitempty" gorm:"type:text"`
-	Metadata          string            `json:"metadata,omitempty" gorm:"type:json"`
-	SubmittedAt       *time.Time        `json:"submitted_at,omitempty"`
-	ConfirmedAt       *time.Time        `json:"confirmed_at,omitempty"`
-	FailedAt          *time.Time        `json:"failed_at,omitempty"`
-	CreatedAt         time.Time         `json:"created_at"`
-	UpdatedAt         time.Time         `json:"updated_at"`
-	DeletedAt         gorm.DeletedAt    `json:"-" gorm:"index"`
-}
+// FabricTransaction represents a Hyperledger Fabric transaction
+type FabricTransaction struct {
+	ID       uint                    `json:"id" gorm:"primaryKey"`
+	ClubID   uint                    `json:"club_id" gorm:"not null;index"`
+	UserID   string                  `json:"user_id" gorm:"size:255;index"`
+	Type     FabricTransactionType   `json:"type" gorm:"size:100;not null"`
+	Status   FabricTransactionStatus `json:"status" gorm:"size:50;default:'pending'"`
 
-func (Transaction) TableName() string {
-	return "blockchain_transactions"
-}
+	// Fabric-specific identifiers
+	TxID       string `json:"tx_id" gorm:"size:255;uniqueIndex"`
+	ChannelID  string `json:"channel_id" gorm:"size:255;not null;index"`
+	ChaincodeName string `json:"chaincode_name" gorm:"size:255;not null"`
+	Function   string `json:"function" gorm:"size:255;not null"`
 
-// Contract represents a smart contract
-type Contract struct {
-	ID          uint           `json:"id" gorm:"primaryKey"`
-	ClubID      uint           `json:"club_id" gorm:"not null;index"`
-	Network     Network        `json:"network" gorm:"size:50;not null"`
-	Name        string         `json:"name" gorm:"size:255;not null"`
-	Address     string         `json:"address" gorm:"size:255;not null"`
-	ABI         string         `json:"abi" gorm:"type:text"`
-	Bytecode    string         `json:"bytecode,omitempty" gorm:"type:text"`
-	Version     string         `json:"version" gorm:"size:50"`
-	IsDeployed  bool           `json:"is_deployed" gorm:"default:false"`
-	DeployedAt  *time.Time     `json:"deployed_at,omitempty"`
-	DeployedBy  string         `json:"deployed_by,omitempty" gorm:"size:255"`
-	Description string         `json:"description,omitempty" gorm:"type:text"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
+	// Transaction parameters
+	Args         []string `json:"args" gorm:"type:json"`
+	TransientMap string   `json:"transient_map,omitempty" gorm:"type:text"` // JSON-encoded map
+
+	// Execution results
+	Response     string `json:"response,omitempty" gorm:"type:text"`
+	ErrorMessage string `json:"error_message,omitempty" gorm:"type:text"`
+
+	// Block information
+	BlockNumber uint64 `json:"block_number,omitempty"`
+	BlockHash   string `json:"block_hash,omitempty" gorm:"size:255"`
+	TxIndex     uint   `json:"tx_index,omitempty"`
+
+	// Endorsement information
+	EndorsingPeers   []string `json:"endorsing_peers" gorm:"type:json"`
+	EndorsementCount uint     `json:"endorsement_count" gorm:"default:0"`
+
+	// Metadata and audit
+	ClientIdentity string `json:"client_identity,omitempty" gorm:"size:255"`
+	Metadata       string `json:"metadata,omitempty" gorm:"type:json"`
+
+	// Timestamps
+	SubmittedAt *time.Time `json:"submitted_at,omitempty"`
+	ConfirmedAt *time.Time `json:"confirmed_at,omitempty"`
+	FailedAt    *time.Time `json:"failed_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
-func (Contract) TableName() string {
-	return "blockchain_contracts"
+func (FabricTransaction) TableName() string {
+	return "fabric_transactions"
 }
 
-// Wallet represents a user wallet
-type Wallet struct {
-	ID              uint           `json:"id" gorm:"primaryKey"`
-	ClubID          uint           `json:"club_id" gorm:"not null;index"`
-	UserID          string         `json:"user_id" gorm:"size:255;not null;index"`
-	Network         Network        `json:"network" gorm:"size:50;not null"`
-	Address         string         `json:"address" gorm:"size:255;not null;index"`
-	IsActive        bool           `json:"is_active" gorm:"default:true"`
-	Balance         string         `json:"balance" gorm:"type:text;default:'0'"` // Native token balance
-	TokenBalances   string         `json:"token_balances,omitempty" gorm:"type:json"` // ERC20 token balances
-	LastSyncedAt    *time.Time     `json:"last_synced_at,omitempty"`
-	LastActivity    *time.Time     `json:"last_activity,omitempty"`
-	CreatedAt       time.Time      `json:"created_at"`
-	UpdatedAt       time.Time      `json:"updated_at"`
-	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
+// Channel represents a Hyperledger Fabric channel
+type Channel struct {
+	ID            uint        `json:"id" gorm:"primaryKey"`
+	ClubID        uint        `json:"club_id" gorm:"not null;index"`
+	ChannelID     string      `json:"channel_id" gorm:"size:255;not null;uniqueIndex"`
+	Name          string      `json:"name" gorm:"size:255;not null"`
+	Description   string      `json:"description,omitempty" gorm:"type:text"`
+	Type          ChannelType `json:"type" gorm:"size:50;not null"`
+	Organizations []string    `json:"organizations" gorm:"type:json"`
+
+	// Channel configuration
+	BatchSize     uint   `json:"batch_size" gorm:"default:10"`
+	BatchTimeout  string `json:"batch_timeout" gorm:"size:50;default:'2s'"`
+	MaxMessageCount uint `json:"max_message_count" gorm:"default:500"`
+
+	// Status
+	IsActive    bool       `json:"is_active" gorm:"default:true"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
-func (Wallet) TableName() string {
-	return "blockchain_wallets"
+func (Channel) TableName() string {
+	return "fabric_channels"
 }
 
-// Token represents an ERC20 or similar token
-type Token struct {
-	ID           uint           `json:"id" gorm:"primaryKey"`
-	ClubID       uint           `json:"club_id" gorm:"not null;index"`
-	Network      Network        `json:"network" gorm:"size:50;not null"`
-	ContractID   uint           `json:"contract_id" gorm:"not null"`
-	Contract     Contract       `json:"contract" gorm:"foreignKey:ContractID"`
-	Name         string         `json:"name" gorm:"size:255;not null"`
-	Symbol       string         `json:"symbol" gorm:"size:50;not null"`
-	Decimals     uint8          `json:"decimals" gorm:"not null"`
-	TotalSupply  string         `json:"total_supply" gorm:"type:text"`
-	MaxSupply    string         `json:"max_supply,omitempty" gorm:"type:text"`
-	IsMintable   bool           `json:"is_mintable" gorm:"default:false"`
-	IsBurnable   bool           `json:"is_burnable" gorm:"default:false"`
-	IsPausable   bool           `json:"is_pausable" gorm:"default:false"`
-	IsActive     bool           `json:"is_active" gorm:"default:true"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
-	DeletedAt    gorm.DeletedAt `json:"-" gorm:"index"`
+// Chaincode represents a deployed chaincode on Fabric
+type Chaincode struct {
+	ID          uint   `json:"id" gorm:"primaryKey"`
+	ClubID      uint   `json:"club_id" gorm:"not null;index"`
+	ChannelID   string `json:"channel_id" gorm:"size:255;not null;index"`
+	Name        string `json:"name" gorm:"size:255;not null"`
+	Version     string `json:"version" gorm:"size:50;not null"`
+	Language    string `json:"language" gorm:"size:50;not null"` // go, javascript, java
+
+	// Package information
+	PackageID    string `json:"package_id" gorm:"size:255;uniqueIndex"`
+	PackageLabel string `json:"package_label" gorm:"size:255"`
+	PackagePath  string `json:"package_path,omitempty" gorm:"type:text"`
+
+	// Deployment status
+	IsInstalled bool   `json:"is_installed" gorm:"default:false"`
+	IsCommitted bool   `json:"is_committed" gorm:"default:false"`
+	Sequence    uint64 `json:"sequence" gorm:"default:1"`
+
+	// Endorsement policy
+	EndorsementPolicy string `json:"endorsement_policy,omitempty" gorm:"type:text"`
+
+	// Metadata
+	Description string    `json:"description,omitempty" gorm:"type:text"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
-func (Token) TableName() string {
-	return "blockchain_tokens"
+func (Chaincode) TableName() string {
+	return "fabric_chaincodes"
 }
 
-// Block represents a blockchain block for tracking
+// Peer represents a Fabric peer node
+type Peer struct {
+	ID           uint   `json:"id" gorm:"primaryKey"`
+	ClubID       uint   `json:"club_id" gorm:"not null;index"`
+	Name         string `json:"name" gorm:"size:255;not null"`
+	Organization string `json:"organization" gorm:"size:255;not null"`
+	Endpoint     string `json:"endpoint" gorm:"size:255;not null"`
+
+	// TLS Configuration
+	TLSEnabled   bool   `json:"tls_enabled" gorm:"default:true"`
+	TLSCertPath  string `json:"tls_cert_path,omitempty" gorm:"type:text"`
+	TLSKeyPath   string `json:"tls_key_path,omitempty" gorm:"type:text"`
+	TLSRootCert  string `json:"tls_root_cert,omitempty" gorm:"type:text"`
+
+	// Status
+	IsActive    bool      `json:"is_active" gorm:"default:true"`
+	LastSeen    *time.Time `json:"last_seen,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
+}
+
+func (Peer) TableName() string {
+	return "fabric_peers"
+}
+
+// Block represents a Fabric block
 type Block struct {
-	ID              uint           `json:"id" gorm:"primaryKey"`
-	Network         Network        `json:"network" gorm:"size:50;not null;index"`
-	Number          uint64         `json:"number" gorm:"not null;index"`
-	Hash            string         `json:"hash" gorm:"size:255;not null;uniqueIndex"`
-	ParentHash      string         `json:"parent_hash" gorm:"size:255"`
-	TransactionCount uint           `json:"transaction_count"`
-	Timestamp       time.Time      `json:"timestamp"`
-	GasLimit        uint64         `json:"gas_limit"`
-	GasUsed         uint64         `json:"gas_used"`
-	Difficulty      string         `json:"difficulty,omitempty" gorm:"type:text"`
-	Miner           string         `json:"miner,omitempty" gorm:"size:255"`
-	ProcessedAt     *time.Time     `json:"processed_at,omitempty"`
-	CreatedAt       time.Time      `json:"created_at"`
-	UpdatedAt       time.Time      `json:"updated_at"`
-	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
+	ID          uint   `json:"id" gorm:"primaryKey"`
+	ClubID      uint   `json:"club_id" gorm:"not null;index"`
+	ChannelID   string `json:"channel_id" gorm:"size:255;not null;index"`
+	BlockNumber uint64 `json:"block_number" gorm:"not null;index"`
+	BlockHash   string `json:"block_hash" gorm:"size:255;not null;uniqueIndex"`
+
+	// Block content
+	PreviousHash    string `json:"previous_hash" gorm:"size:255;not null"`
+	DataHash        string `json:"data_hash" gorm:"size:255;not null"`
+	TransactionCount uint  `json:"transaction_count" gorm:"default:0"`
+
+	// Block metadata
+	Timestamp   time.Time `json:"timestamp"`
+	CreatedBy   string    `json:"created_by" gorm:"size:255"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 func (Block) TableName() string {
-	return "blockchain_blocks"
+	return "fabric_blocks"
 }
 
-// Event represents a blockchain event log
+// Event represents a Fabric chaincode event
 type Event struct {
-	ID              uint           `json:"id" gorm:"primaryKey"`
-	ClubID          uint           `json:"club_id" gorm:"not null;index"`
-	Network         Network        `json:"network" gorm:"size:50;not null"`
-	ContractAddress string         `json:"contract_address" gorm:"size:255;not null;index"`
-	EventName       string         `json:"event_name" gorm:"size:255;not null"`
-	TransactionHash string         `json:"transaction_hash" gorm:"size:255;not null;index"`
-	BlockNumber     uint64         `json:"block_number" gorm:"not null"`
-	LogIndex        uint           `json:"log_index" gorm:"not null"`
-	Topics          string         `json:"topics" gorm:"type:json"`
-	Data            string         `json:"data" gorm:"type:text"`
-	DecodedData     string         `json:"decoded_data,omitempty" gorm:"type:json"`
-	ProcessedAt     *time.Time     `json:"processed_at,omitempty"`
-	CreatedAt       time.Time      `json:"created_at"`
-	UpdatedAt       time.Time      `json:"updated_at"`
-	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
+	ID            uint   `json:"id" gorm:"primaryKey"`
+	ClubID        uint   `json:"club_id" gorm:"not null;index"`
+	ChannelID     string `json:"channel_id" gorm:"size:255;not null;index"`
+	ChaincodeName string `json:"chaincode_name" gorm:"size:255;not null"`
+	EventName     string `json:"event_name" gorm:"size:255;not null"`
+
+	// Event details
+	TxID        string `json:"tx_id" gorm:"size:255;not null;index"`
+	BlockNumber uint64 `json:"block_number" gorm:"not null;index"`
+	Payload     string `json:"payload,omitempty" gorm:"type:text"`
+
+	// Processing status
+	IsProcessed bool       `json:"is_processed" gorm:"default:false"`
+	ProcessedAt *time.Time `json:"processed_at,omitempty"`
+
+	// Timestamps
+	EventTime time.Time `json:"event_time"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 func (Event) TableName() string {
-	return "blockchain_events"
+	return "fabric_events"
 }
 
-// Helper methods
+// Helper methods for FabricTransaction
 
-// GetValueAsBigInt converts the value string to big.Int
-func (t *Transaction) GetValueAsBigInt() *big.Int {
-	value := new(big.Int)
-	value.SetString(t.Value, 10)
-	return value
+// SetArgs sets the transaction arguments from a slice
+func (t *FabricTransaction) SetArgs(args []string) {
+	t.Args = args
 }
 
-// SetValueFromBigInt sets the value from a big.Int
-func (t *Transaction) SetValueFromBigInt(value *big.Int) {
-	t.Value = value.String()
+// GetArgs returns the transaction arguments
+func (t *FabricTransaction) GetArgs() []string {
+	if t.Args == nil {
+		return []string{}
+	}
+	return t.Args
 }
 
-// GetGasPriceAsBigInt converts the gas price string to big.Int
-func (t *Transaction) GetGasPriceAsBigInt() *big.Int {
-	gasPrice := new(big.Int)
-	gasPrice.SetString(t.GasPrice, 10)
-	return gasPrice
-}
-
-// SetGasPriceFromBigInt sets the gas price from a big.Int
-func (t *Transaction) SetGasPriceFromBigInt(gasPrice *big.Int) {
-	t.GasPrice = gasPrice.String()
-}
-
-// IsConfirmed checks if the transaction is confirmed
-func (t *Transaction) IsConfirmed() bool {
-	return t.Status == TransactionStatusConfirmed
-}
-
-// IsPending checks if the transaction is pending
-func (t *Transaction) IsPending() bool {
-	return t.Status == TransactionStatusPending || t.Status == TransactionStatusSubmitted
-}
-
-// MarkAsSubmitted updates the transaction status to submitted
-func (t *Transaction) MarkAsSubmitted(hash string) {
-	t.Status = TransactionStatusSubmitted
-	t.Hash = hash
-	now := time.Now()
-	t.SubmittedAt = &now
-}
-
-// MarkAsConfirmed updates the transaction status to confirmed
-func (t *Transaction) MarkAsConfirmed(blockNumber uint64, blockHash string, gasUsed uint64) {
-	t.Status = TransactionStatusConfirmed
-	t.BlockNumber = blockNumber
-	t.BlockHash = blockHash
-	t.GasUsed = gasUsed
-	now := time.Now()
-	t.ConfirmedAt = &now
-}
-
-// MarkAsFailed updates the transaction status to failed
-func (t *Transaction) MarkAsFailed(errorMsg string) {
-	t.Status = TransactionStatusFailed
-	t.ErrorMessage = errorMsg
-	now := time.Now()
-	t.FailedAt = &now
-}
-
-// GetMetadata parses the metadata JSON
-func (t *Transaction) GetMetadata() (map[string]interface{}, error) {
-	if t.Metadata == "" {
-		return make(map[string]interface{}), nil
+// SetTransientMap sets the transient map from a map
+func (t *FabricTransaction) SetTransientMap(transientMap map[string][]byte) error {
+	if transientMap == nil {
+		t.TransientMap = ""
+		return nil
 	}
 
-	var metadata map[string]interface{}
-	err := json.Unmarshal([]byte(t.Metadata), &metadata)
-	return metadata, err
+	// Convert []byte values to base64 for JSON serialization
+	jsonMap := make(map[string]string)
+	for k, v := range transientMap {
+		jsonMap[k] = string(v) // Store as string for simplicity
+	}
+
+	jsonData, err := json.Marshal(jsonMap)
+	if err != nil {
+		return err
+	}
+
+	t.TransientMap = string(jsonData)
+	return nil
 }
 
-// SetMetadata sets the metadata as JSON
-func (t *Transaction) SetMetadata(metadata map[string]interface{}) error {
+// GetTransientMap returns the transient map
+func (t *FabricTransaction) GetTransientMap() (map[string][]byte, error) {
+	if t.TransientMap == "" {
+		return nil, nil
+	}
+
+	var jsonMap map[string]string
+	err := json.Unmarshal([]byte(t.TransientMap), &jsonMap)
+	if err != nil {
+		return nil, err
+	}
+
+	transientMap := make(map[string][]byte)
+	for k, v := range jsonMap {
+		transientMap[k] = []byte(v)
+	}
+
+	return transientMap, nil
+}
+
+// SetMetadata sets the metadata from a map
+func (t *FabricTransaction) SetMetadata(metadata map[string]interface{}) error {
 	if metadata == nil {
 		t.Metadata = ""
 		return nil
 	}
 
-	data, err := json.Marshal(metadata)
+	jsonData, err := json.Marshal(metadata)
 	if err != nil {
 		return err
 	}
-	t.Metadata = string(data)
+
+	t.Metadata = string(jsonData)
 	return nil
 }
 
-// GetTokenBalances parses the token balances JSON
-func (w *Wallet) GetTokenBalances() (map[string]string, error) {
-	if w.TokenBalances == "" {
-		return make(map[string]string), nil
+// GetMetadata returns the metadata as a map
+func (t *FabricTransaction) GetMetadata() (map[string]interface{}, error) {
+	if t.Metadata == "" {
+		return nil, nil
 	}
 
-	var balances map[string]string
-	err := json.Unmarshal([]byte(w.TokenBalances), &balances)
-	return balances, err
-}
-
-// SetTokenBalances sets the token balances as JSON
-func (w *Wallet) SetTokenBalances(balances map[string]string) error {
-	if balances == nil {
-		w.TokenBalances = ""
-		return nil
-	}
-
-	data, err := json.Marshal(balances)
+	var metadata map[string]interface{}
+	err := json.Unmarshal([]byte(t.Metadata), &metadata)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	w.TokenBalances = string(data)
-	return nil
+
+	return metadata, nil
 }
 
-// UpdateBalance updates the wallet balance and last synced time
-func (w *Wallet) UpdateBalance(balance string) {
-	w.Balance = balance
+// MarkAsSubmitted marks the transaction as submitted to Fabric
+func (t *FabricTransaction) MarkAsSubmitted(txID string, endorsingPeers []string) {
 	now := time.Now()
-	w.LastSyncedAt = &now
+	t.Status = FabricTransactionStatusSubmitted
+	t.TxID = txID
+	t.EndorsingPeers = endorsingPeers
+	t.EndorsementCount = uint(len(endorsingPeers))
+	t.SubmittedAt = &now
 }
 
-// GetBalanceAsBigInt converts the balance string to big.Int
-func (w *Wallet) GetBalanceAsBigInt() *big.Int {
-	balance := new(big.Int)
-	balance.SetString(w.Balance, 10)
-	return balance
+// MarkAsConfirmed marks the transaction as confirmed in a block
+func (t *FabricTransaction) MarkAsConfirmed(blockNumber uint64, blockHash string, txIndex uint) {
+	now := time.Now()
+	t.Status = FabricTransactionStatusConfirmed
+	t.BlockNumber = blockNumber
+	t.BlockHash = blockHash
+	t.TxIndex = txIndex
+	t.ConfirmedAt = &now
 }
 
-// GetTotalSupplyAsBigInt converts the total supply string to big.Int
-func (token *Token) GetTotalSupplyAsBigInt() *big.Int {
-	supply := new(big.Int)
-	supply.SetString(token.TotalSupply, 10)
-	return supply
+// MarkAsFailed marks the transaction as failed
+func (t *FabricTransaction) MarkAsFailed(errorMessage string) {
+	now := time.Now()
+	t.Status = FabricTransactionStatusFailed
+	t.ErrorMessage = errorMessage
+	t.FailedAt = &now
 }
 
-// SetTotalSupplyFromBigInt sets the total supply from a big.Int
-func (token *Token) SetTotalSupplyFromBigInt(supply *big.Int) {
-	token.TotalSupply = supply.String()
+// IsSuccessful returns true if the transaction is confirmed
+func (t *FabricTransaction) IsSuccessful() bool {
+	return t.Status == FabricTransactionStatusConfirmed
+}
+
+// IsPending returns true if the transaction is pending or submitted
+func (t *FabricTransaction) IsPending() bool {
+	return t.Status == FabricTransactionStatusPending || t.Status == FabricTransactionStatusSubmitted
+}
+
+// HasError returns true if the transaction has failed
+func (t *FabricTransaction) HasError() bool {
+	return t.Status == FabricTransactionStatusFailed || t.ErrorMessage != ""
 }

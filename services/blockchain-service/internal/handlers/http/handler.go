@@ -10,11 +10,10 @@ import (
 
 	"reciprocal-clubs-backend/pkg/shared/logging"
 	"reciprocal-clubs-backend/pkg/shared/monitoring"
-	"reciprocal-clubs-backend/services/blockchain-service/internal/models"
 	"reciprocal-clubs-backend/services/blockchain-service/internal/service"
 )
 
-// HTTPHandler handles HTTP requests for blockchain service
+// HTTPHandler handles HTTP requests for the blockchain service
 type HTTPHandler struct {
 	service    *service.BlockchainService
 	logger     logging.Logger
@@ -30,599 +29,542 @@ func NewHTTPHandler(service *service.BlockchainService, logger logging.Logger, m
 	}
 }
 
-// SetupRoutes configures the HTTP routes
-func (h *HTTPHandler) SetupRoutes() http.Handler {
+// SetupRoutes sets up the HTTP routes
+func (h *HTTPHandler) SetupRoutes() *mux.Router {
 	router := mux.NewRouter()
 
 	// Health check
-	router.HandleFunc("/health", h.healthCheck).Methods("GET")
+	router.HandleFunc("/health", h.HealthCheck).Methods("GET")
+	router.HandleFunc("/ready", h.ReadinessCheck).Methods("GET")
 
-	// API routes
-	api := router.PathPrefix("/api/v1").Subrouter()
+	// Transaction endpoints
+	router.HandleFunc("/transactions", h.CreateTransaction).Methods("POST")
+	router.HandleFunc("/transactions/{id:[0-9]+}", h.GetTransaction).Methods("GET")
+	router.HandleFunc("/transactions/txid/{txId}", h.GetTransactionByTxID).Methods("GET")
+	router.HandleFunc("/transactions/club/{clubId:[0-9]+}", h.GetTransactionsByClub).Methods("GET")
+	router.HandleFunc("/transactions/{id:[0-9]+}/submit", h.SubmitTransaction).Methods("PUT")
+	router.HandleFunc("/transactions/confirm", h.ConfirmTransaction).Methods("PUT")
+	router.HandleFunc("/transactions/fail", h.FailTransaction).Methods("PUT")
 
-	// Transaction routes
-	api.HandleFunc("/transactions", h.createTransaction).Methods("POST")
-	api.HandleFunc("/transactions/{id}", h.getTransaction).Methods("GET")
-	api.HandleFunc("/transactions/hash/{hash}", h.getTransactionByHash).Methods("GET")
-	api.HandleFunc("/transactions/{id}/submit", h.submitTransaction).Methods("POST")
-	api.HandleFunc("/transactions/{id}/confirm", h.confirmTransaction).Methods("POST")
-	api.HandleFunc("/transactions/{id}/fail", h.failTransaction).Methods("POST")
-	api.HandleFunc("/clubs/{clubId}/transactions", h.getClubTransactions).Methods("GET")
-	api.HandleFunc("/users/{userId}/transactions", h.getUserTransactions).Methods("GET")
+	// Channel endpoints
+	router.HandleFunc("/channels", h.CreateChannel).Methods("POST")
+	router.HandleFunc("/channels/{id:[0-9]+}", h.GetChannel).Methods("GET")
+	router.HandleFunc("/channels/channel/{channelId}", h.GetChannelByChannelID).Methods("GET")
+	router.HandleFunc("/channels/club/{clubId:[0-9]+}", h.GetChannelsByClub).Methods("GET")
 
-	// Contract routes
-	api.HandleFunc("/contracts", h.createContract).Methods("POST")
-	api.HandleFunc("/contracts/{id}", h.getContract).Methods("GET")
-	api.HandleFunc("/clubs/{clubId}/contracts", h.getClubContracts).Methods("GET")
+	// Chaincode endpoints
+	router.HandleFunc("/chaincodes", h.CreateChaincode).Methods("POST")
+	router.HandleFunc("/chaincodes/{id:[0-9]+}", h.GetChaincode).Methods("GET")
+	router.HandleFunc("/chaincodes/channel/{channelId}", h.GetChaincodesByChannel).Methods("GET")
+	router.HandleFunc("/chaincodes/{id:[0-9]+}/install", h.MarkChaincodeInstalled).Methods("PUT")
+	router.HandleFunc("/chaincodes/{id:[0-9]+}/commit", h.MarkChaincodeCommitted).Methods("PUT")
 
-	// Wallet routes
-	api.HandleFunc("/wallets", h.createWallet).Methods("POST")
-	api.HandleFunc("/wallets/{address}/balance", h.updateWalletBalance).Methods("PUT")
-	api.HandleFunc("/users/{userId}/wallets", h.getUserWallets).Methods("GET")
+	// Block endpoints
+	router.HandleFunc("/blocks", h.CreateBlock).Methods("POST")
+	router.HandleFunc("/blocks/hash/{blockHash}", h.GetBlockByHash).Methods("GET")
+	router.HandleFunc("/blocks/channel/{channelId}", h.GetBlocksByChannel).Methods("GET")
 
-	// Token routes
-	api.HandleFunc("/tokens", h.createToken).Methods("POST")
-	api.HandleFunc("/clubs/{clubId}/tokens", h.getClubTokens).Methods("GET")
+	// Event endpoints
+	router.HandleFunc("/events", h.CreateEvent).Methods("POST")
+	router.HandleFunc("/events/unprocessed", h.GetUnprocessedEvents).Methods("GET")
+	router.HandleFunc("/events/{id:[0-9]+}/process", h.MarkEventProcessed).Methods("PUT")
 
-	// Stats routes
-	api.HandleFunc("/clubs/{clubId}/stats", h.getTransactionStats).Methods("GET")
-
-	// Add middleware
-	router.Use(h.loggingMiddleware)
-	router.Use(h.monitoringMiddleware)
+	// Statistics
+	router.HandleFunc("/stats/club/{clubId:[0-9]+}", h.GetServiceStats).Methods("GET")
 
 	return router
 }
 
-// Health check endpoint
-func (h *HTTPHandler) healthCheck(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{
-		"status":  "healthy",
-		"service": "blockchain-service",
+// Health check endpoints
+
+func (h *HTTPHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
+	if err := h.service.HealthCheck(r.Context()); err != nil {
+		h.writeErrorResponse(w, http.StatusServiceUnavailable, "Health check failed", err)
+		return
+	}
+
+	h.writeResponse(w, http.StatusOK, map[string]string{
+		"status":    "healthy",
+		"service":   "blockchain-service",
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+func (h *HTTPHandler) ReadinessCheck(w http.ResponseWriter, r *http.Request) {
+	if err := h.service.HealthCheck(r.Context()); err != nil {
+		h.writeErrorResponse(w, http.StatusServiceUnavailable, "Service not ready", err)
+		return
+	}
+
+	h.writeResponse(w, http.StatusOK, map[string]string{
+		"status":    "ready",
+		"service":   "blockchain-service",
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	})
 }
 
 // Transaction handlers
 
-func (h *HTTPHandler) createTransaction(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) CreateTransaction(w http.ResponseWriter, r *http.Request) {
 	var req service.CreateTransactionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, http.StatusBadRequest, "Invalid request body")
+		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid request body", err)
 		return
 	}
 
 	transaction, err := h.service.CreateTransaction(r.Context(), &req)
 	if err != nil {
-		h.logger.Error("Failed to create transaction", map[string]interface{}{
-			"error": err.Error(),
-		})
-		h.writeError(w, http.StatusInternalServerError, "Failed to create transaction")
+		h.writeErrorResponse(w, http.StatusInternalServerError, "Failed to create transaction", err)
 		return
 	}
 
-	h.writeJSON(w, http.StatusCreated, transaction)
+	h.writeResponse(w, http.StatusCreated, transaction)
 }
 
-func (h *HTTPHandler) getTransaction(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) GetTransaction(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.ParseUint(vars["id"], 10, 32)
 	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "Invalid ID")
+		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid transaction ID", err)
 		return
 	}
 
 	transaction, err := h.service.GetTransactionByID(r.Context(), uint(id))
 	if err != nil {
-		h.logger.Error("Failed to get transaction", map[string]interface{}{
-			"error": err.Error(),
-			"id":    id,
-		})
-		h.writeError(w, http.StatusNotFound, "Transaction not found")
+		h.writeErrorResponse(w, http.StatusNotFound, "Transaction not found", err)
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, transaction)
+	h.writeResponse(w, http.StatusOK, transaction)
 }
 
-func (h *HTTPHandler) getTransactionByHash(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) GetTransactionByTxID(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	hash := vars["hash"]
+	txID := vars["txId"]
 
-	transaction, err := h.service.GetTransactionByHash(r.Context(), hash)
+	transaction, err := h.service.GetTransactionByTxID(r.Context(), txID)
 	if err != nil {
-		h.logger.Error("Failed to get transaction by hash", map[string]interface{}{
-			"error": err.Error(),
-			"hash":  hash,
-		})
-		h.writeError(w, http.StatusNotFound, "Transaction not found")
+		h.writeErrorResponse(w, http.StatusNotFound, "Transaction not found", err)
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, transaction)
+	h.writeResponse(w, http.StatusOK, transaction)
 }
 
-func (h *HTTPHandler) submitTransaction(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := strconv.ParseUint(vars["id"], 10, 32)
-	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "Invalid ID")
-		return
-	}
-
-	var req struct {
-		Hash  string `json:"hash"`
-		Nonce uint64 `json:"nonce"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	transaction, err := h.service.SubmitTransaction(r.Context(), uint(id), req.Hash, req.Nonce)
-	if err != nil {
-		h.logger.Error("Failed to submit transaction", map[string]interface{}{
-			"error": err.Error(),
-			"id":    id,
-		})
-		h.writeError(w, http.StatusInternalServerError, "Failed to submit transaction")
-		return
-	}
-
-	h.writeJSON(w, http.StatusOK, transaction)
-}
-
-func (h *HTTPHandler) confirmTransaction(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := strconv.ParseUint(vars["id"], 10, 32)
-	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "Invalid ID")
-		return
-	}
-
-	var req struct {
-		Hash        string `json:"hash"`
-		BlockNumber uint64 `json:"block_number"`
-		BlockHash   string `json:"block_hash"`
-		GasUsed     uint64 `json:"gas_used"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	transaction, err := h.service.ConfirmTransaction(r.Context(), req.Hash, req.BlockNumber, req.BlockHash, req.GasUsed)
-	if err != nil {
-		h.logger.Error("Failed to confirm transaction", map[string]interface{}{
-			"error": err.Error(),
-			"id":    id,
-		})
-		h.writeError(w, http.StatusInternalServerError, "Failed to confirm transaction")
-		return
-	}
-
-	h.writeJSON(w, http.StatusOK, transaction)
-}
-
-func (h *HTTPHandler) failTransaction(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := strconv.ParseUint(vars["id"], 10, 32)
-	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "Invalid ID")
-		return
-	}
-
-	var req struct {
-		Hash         string `json:"hash"`
-		ErrorMessage string `json:"error_message"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	transaction, err := h.service.FailTransaction(r.Context(), req.Hash, req.ErrorMessage)
-	if err != nil {
-		h.logger.Error("Failed to fail transaction", map[string]interface{}{
-			"error": err.Error(),
-			"id":    id,
-		})
-		h.writeError(w, http.StatusInternalServerError, "Failed to fail transaction")
-		return
-	}
-
-	h.writeJSON(w, http.StatusOK, transaction)
-}
-
-func (h *HTTPHandler) getClubTransactions(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) GetTransactionsByClub(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	clubID, err := strconv.ParseUint(vars["clubId"], 10, 32)
 	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "Invalid club ID")
+		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid club ID", err)
 		return
 	}
 
-	// Parse query parameters
-	networkStr := r.URL.Query().Get("network")
-	limitStr := r.URL.Query().Get("limit")
-	offsetStr := r.URL.Query().Get("offset")
-
-	var network models.Network
-	if networkStr != "" {
-		network = models.Network(networkStr)
-	}
-
+	// Parse pagination parameters
 	limit := 50 // default
 	offset := 0 // default
 
-	if limitStr != "" {
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
 			limit = l
 		}
 	}
 
-	if offsetStr != "" {
+	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
 		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
 			offset = o
 		}
 	}
 
-	transactions, err := h.service.GetTransactionsByClub(r.Context(), uint(clubID), network, limit, offset)
+	transactions, err := h.service.GetTransactionsByClubID(r.Context(), uint(clubID), limit, offset)
 	if err != nil {
-		h.logger.Error("Failed to get club transactions", map[string]interface{}{
-			"error":   err.Error(),
-			"club_id": clubID,
-		})
-		h.writeError(w, http.StatusInternalServerError, "Failed to get transactions")
+		h.writeErrorResponse(w, http.StatusInternalServerError, "Failed to get transactions", err)
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, transactions)
+	h.writeResponse(w, http.StatusOK, transactions)
 }
 
-func (h *HTTPHandler) getUserTransactions(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) SubmitTransaction(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	userID := vars["userId"]
-
-	clubIDStr := r.URL.Query().Get("club_id")
-	if clubIDStr == "" {
-		h.writeError(w, http.StatusBadRequest, "club_id query parameter is required")
-		return
-	}
-
-	clubID, err := strconv.ParseUint(clubIDStr, 10, 32)
+	id, err := strconv.ParseUint(vars["id"], 10, 32)
 	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "Invalid club ID")
+		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid transaction ID", err)
 		return
 	}
 
-	// Parse query parameters
-	networkStr := r.URL.Query().Get("network")
-	limitStr := r.URL.Query().Get("limit")
-	offsetStr := r.URL.Query().Get("offset")
-
-	var network models.Network
-	if networkStr != "" {
-		network = models.Network(networkStr)
+	var req struct {
+		TxID           string   `json:"tx_id" validate:"required"`
+		EndorsingPeers []string `json:"endorsing_peers" validate:"required"`
 	}
 
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	transaction, err := h.service.SubmitTransaction(r.Context(), uint(id), req.TxID, req.EndorsingPeers)
+	if err != nil {
+		h.writeErrorResponse(w, http.StatusInternalServerError, "Failed to submit transaction", err)
+		return
+	}
+
+	h.writeResponse(w, http.StatusOK, transaction)
+}
+
+func (h *HTTPHandler) ConfirmTransaction(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		TxID        string `json:"tx_id" validate:"required"`
+		BlockNumber uint64 `json:"block_number" validate:"required"`
+		BlockHash   string `json:"block_hash" validate:"required"`
+		TxIndex     uint   `json:"tx_index" validate:"required"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	transaction, err := h.service.ConfirmTransaction(r.Context(), req.TxID, req.BlockNumber, req.BlockHash, req.TxIndex)
+	if err != nil {
+		h.writeErrorResponse(w, http.StatusInternalServerError, "Failed to confirm transaction", err)
+		return
+	}
+
+	h.writeResponse(w, http.StatusOK, transaction)
+}
+
+func (h *HTTPHandler) FailTransaction(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		TxID         string `json:"tx_id" validate:"required"`
+		ErrorMessage string `json:"error_message" validate:"required"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	transaction, err := h.service.FailTransaction(r.Context(), req.TxID, req.ErrorMessage)
+	if err != nil {
+		h.writeErrorResponse(w, http.StatusInternalServerError, "Failed to mark transaction as failed", err)
+		return
+	}
+
+	h.writeResponse(w, http.StatusOK, transaction)
+}
+
+// Channel handlers
+
+func (h *HTTPHandler) CreateChannel(w http.ResponseWriter, r *http.Request) {
+	var req service.CreateChannelRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	channel, err := h.service.CreateChannel(r.Context(), &req)
+	if err != nil {
+		h.writeErrorResponse(w, http.StatusInternalServerError, "Failed to create channel", err)
+		return
+	}
+
+	h.writeResponse(w, http.StatusCreated, channel)
+}
+
+func (h *HTTPHandler) GetChannel(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.ParseUint(vars["id"], 10, 32)
+	if err != nil {
+		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid channel ID", err)
+		return
+	}
+
+	channel, err := h.service.GetChannelByID(r.Context(), uint(id))
+	if err != nil {
+		h.writeErrorResponse(w, http.StatusNotFound, "Channel not found", err)
+		return
+	}
+
+	h.writeResponse(w, http.StatusOK, channel)
+}
+
+func (h *HTTPHandler) GetChannelByChannelID(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	channelID := vars["channelId"]
+
+	channel, err := h.service.GetChannelByChannelID(r.Context(), channelID)
+	if err != nil {
+		h.writeErrorResponse(w, http.StatusNotFound, "Channel not found", err)
+		return
+	}
+
+	h.writeResponse(w, http.StatusOK, channel)
+}
+
+func (h *HTTPHandler) GetChannelsByClub(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	clubID, err := strconv.ParseUint(vars["clubId"], 10, 32)
+	if err != nil {
+		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid club ID", err)
+		return
+	}
+
+	channels, err := h.service.GetChannelsByClubID(r.Context(), uint(clubID))
+	if err != nil {
+		h.writeErrorResponse(w, http.StatusInternalServerError, "Failed to get channels", err)
+		return
+	}
+
+	h.writeResponse(w, http.StatusOK, channels)
+}
+
+// Chaincode handlers
+
+func (h *HTTPHandler) CreateChaincode(w http.ResponseWriter, r *http.Request) {
+	var req service.CreateChaincodeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	chaincode, err := h.service.CreateChaincode(r.Context(), &req)
+	if err != nil {
+		h.writeErrorResponse(w, http.StatusInternalServerError, "Failed to create chaincode", err)
+		return
+	}
+
+	h.writeResponse(w, http.StatusCreated, chaincode)
+}
+
+func (h *HTTPHandler) GetChaincode(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.ParseUint(vars["id"], 10, 32)
+	if err != nil {
+		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid chaincode ID", err)
+		return
+	}
+
+	chaincode, err := h.service.GetChaincodeByID(r.Context(), uint(id))
+	if err != nil {
+		h.writeErrorResponse(w, http.StatusNotFound, "Chaincode not found", err)
+		return
+	}
+
+	h.writeResponse(w, http.StatusOK, chaincode)
+}
+
+func (h *HTTPHandler) GetChaincodesByChannel(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	channelID := vars["channelId"]
+
+	chaincodes, err := h.service.GetChaincodesByChannelID(r.Context(), channelID)
+	if err != nil {
+		h.writeErrorResponse(w, http.StatusInternalServerError, "Failed to get chaincodes", err)
+		return
+	}
+
+	h.writeResponse(w, http.StatusOK, chaincodes)
+}
+
+func (h *HTTPHandler) MarkChaincodeInstalled(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.ParseUint(vars["id"], 10, 32)
+	if err != nil {
+		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid chaincode ID", err)
+		return
+	}
+
+	if err := h.service.MarkChaincodeInstalled(r.Context(), uint(id)); err != nil {
+		h.writeErrorResponse(w, http.StatusInternalServerError, "Failed to mark chaincode as installed", err)
+		return
+	}
+
+	h.writeResponse(w, http.StatusOK, map[string]string{"status": "installed"})
+}
+
+func (h *HTTPHandler) MarkChaincodeCommitted(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.ParseUint(vars["id"], 10, 32)
+	if err != nil {
+		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid chaincode ID", err)
+		return
+	}
+
+	if err := h.service.MarkChaincodeCommitted(r.Context(), uint(id)); err != nil {
+		h.writeErrorResponse(w, http.StatusInternalServerError, "Failed to mark chaincode as committed", err)
+		return
+	}
+
+	h.writeResponse(w, http.StatusOK, map[string]string{"status": "committed"})
+}
+
+// Block handlers
+
+func (h *HTTPHandler) CreateBlock(w http.ResponseWriter, r *http.Request) {
+	var req service.CreateBlockRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	block, err := h.service.CreateBlock(r.Context(), &req)
+	if err != nil {
+		h.writeErrorResponse(w, http.StatusInternalServerError, "Failed to create block", err)
+		return
+	}
+
+	h.writeResponse(w, http.StatusCreated, block)
+}
+
+func (h *HTTPHandler) GetBlockByHash(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	blockHash := vars["blockHash"]
+
+	block, err := h.service.GetBlockByHash(r.Context(), blockHash)
+	if err != nil {
+		h.writeErrorResponse(w, http.StatusNotFound, "Block not found", err)
+		return
+	}
+
+	h.writeResponse(w, http.StatusOK, block)
+}
+
+func (h *HTTPHandler) GetBlocksByChannel(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	channelID := vars["channelId"]
+
+	// Parse pagination parameters
 	limit := 50 // default
 	offset := 0 // default
 
-	if limitStr != "" {
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
 			limit = l
 		}
 	}
 
-	if offsetStr != "" {
+	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
 		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
 			offset = o
 		}
 	}
 
-	transactions, err := h.service.GetTransactionsByUser(r.Context(), userID, uint(clubID), network, limit, offset)
+	blocks, err := h.service.GetBlocksByChannelID(r.Context(), channelID, limit, offset)
 	if err != nil {
-		h.logger.Error("Failed to get user transactions", map[string]interface{}{
-			"error":   err.Error(),
-			"user_id": userID,
-			"club_id": clubID,
-		})
-		h.writeError(w, http.StatusInternalServerError, "Failed to get transactions")
+		h.writeErrorResponse(w, http.StatusInternalServerError, "Failed to get blocks", err)
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, transactions)
+	h.writeResponse(w, http.StatusOK, blocks)
 }
 
-// Contract handlers
+// Event handlers
 
-func (h *HTTPHandler) createContract(w http.ResponseWriter, r *http.Request) {
-	var req service.CreateContractRequest
+func (h *HTTPHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
+	var req service.CreateEventRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, http.StatusBadRequest, "Invalid request body")
+		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid request body", err)
 		return
 	}
 
-	contract, err := h.service.CreateContract(r.Context(), &req)
+	event, err := h.service.CreateEvent(r.Context(), &req)
 	if err != nil {
-		h.logger.Error("Failed to create contract", map[string]interface{}{
-			"error": err.Error(),
-		})
-		h.writeError(w, http.StatusInternalServerError, "Failed to create contract")
+		h.writeErrorResponse(w, http.StatusInternalServerError, "Failed to create event", err)
 		return
 	}
 
-	h.writeJSON(w, http.StatusCreated, contract)
+	h.writeResponse(w, http.StatusCreated, event)
 }
 
-func (h *HTTPHandler) getContract(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) GetUnprocessedEvents(w http.ResponseWriter, r *http.Request) {
+	limit := 100 // default
+
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 1000 {
+			limit = l
+		}
+	}
+
+	events, err := h.service.GetUnprocessedEvents(r.Context(), limit)
+	if err != nil {
+		h.writeErrorResponse(w, http.StatusInternalServerError, "Failed to get unprocessed events", err)
+		return
+	}
+
+	h.writeResponse(w, http.StatusOK, events)
+}
+
+func (h *HTTPHandler) MarkEventProcessed(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.ParseUint(vars["id"], 10, 32)
 	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "Invalid ID")
+		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid event ID", err)
 		return
 	}
 
-	contract, err := h.service.GetContractByID(r.Context(), uint(id))
-	if err != nil {
-		h.logger.Error("Failed to get contract", map[string]interface{}{
-			"error": err.Error(),
-			"id":    id,
-		})
-		h.writeError(w, http.StatusNotFound, "Contract not found")
+	if err := h.service.MarkEventProcessed(r.Context(), uint(id)); err != nil {
+		h.writeErrorResponse(w, http.StatusInternalServerError, "Failed to mark event as processed", err)
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, contract)
+	h.writeResponse(w, http.StatusOK, map[string]string{"status": "processed"})
 }
 
-func (h *HTTPHandler) getClubContracts(w http.ResponseWriter, r *http.Request) {
+// Statistics handlers
+
+func (h *HTTPHandler) GetServiceStats(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	clubID, err := strconv.ParseUint(vars["clubId"], 10, 32)
 	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "Invalid club ID")
+		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid club ID", err)
 		return
 	}
 
-	networkStr := r.URL.Query().Get("network")
-	var network models.Network
-	if networkStr != "" {
-		network = models.Network(networkStr)
-	}
-
-	contracts, err := h.service.GetContractsByClub(r.Context(), uint(clubID), network)
+	stats, err := h.service.GetServiceStats(r.Context(), uint(clubID))
 	if err != nil {
-		h.logger.Error("Failed to get club contracts", map[string]interface{}{
-			"error":   err.Error(),
-			"club_id": clubID,
-		})
-		h.writeError(w, http.StatusInternalServerError, "Failed to get contracts")
+		h.writeErrorResponse(w, http.StatusInternalServerError, "Failed to get service stats", err)
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, contracts)
+	h.writeResponse(w, http.StatusOK, stats)
 }
 
-// Wallet handlers
+// Helper methods
 
-func (h *HTTPHandler) createWallet(w http.ResponseWriter, r *http.Request) {
-	var req service.CreateWalletRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	wallet, err := h.service.CreateWallet(r.Context(), &req)
-	if err != nil {
-		h.logger.Error("Failed to create wallet", map[string]interface{}{
-			"error": err.Error(),
-		})
-		h.writeError(w, http.StatusInternalServerError, "Failed to create wallet")
-		return
-	}
-
-	h.writeJSON(w, http.StatusCreated, wallet)
-}
-
-func (h *HTTPHandler) updateWalletBalance(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	address := vars["address"]
-
-	var req struct {
-		Network       models.Network    `json:"network"`
-		Balance       string            `json:"balance"`
-		TokenBalances map[string]string `json:"token_balances,omitempty"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	wallet, err := h.service.UpdateWalletBalance(r.Context(), address, req.Network, req.Balance, req.TokenBalances)
-	if err != nil {
-		h.logger.Error("Failed to update wallet balance", map[string]interface{}{
-			"error":   err.Error(),
-			"address": address,
-		})
-		h.writeError(w, http.StatusInternalServerError, "Failed to update wallet balance")
-		return
-	}
-
-	h.writeJSON(w, http.StatusOK, wallet)
-}
-
-func (h *HTTPHandler) getUserWallets(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	userID := vars["userId"]
-
-	clubIDStr := r.URL.Query().Get("club_id")
-	if clubIDStr == "" {
-		h.writeError(w, http.StatusBadRequest, "club_id query parameter is required")
-		return
-	}
-
-	clubID, err := strconv.ParseUint(clubIDStr, 10, 32)
-	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "Invalid club ID")
-		return
-	}
-
-	networkStr := r.URL.Query().Get("network")
-	var network models.Network
-	if networkStr != "" {
-		network = models.Network(networkStr)
-	}
-
-	wallets, err := h.service.GetWalletsByUser(r.Context(), userID, uint(clubID), network)
-	if err != nil {
-		h.logger.Error("Failed to get user wallets", map[string]interface{}{
-			"error":   err.Error(),
-			"user_id": userID,
-			"club_id": clubID,
-		})
-		h.writeError(w, http.StatusInternalServerError, "Failed to get wallets")
-		return
-	}
-
-	h.writeJSON(w, http.StatusOK, wallets)
-}
-
-// Token handlers
-
-func (h *HTTPHandler) createToken(w http.ResponseWriter, r *http.Request) {
-	var req service.CreateTokenRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	token, err := h.service.CreateToken(r.Context(), &req)
-	if err != nil {
-		h.logger.Error("Failed to create token", map[string]interface{}{
-			"error": err.Error(),
-		})
-		h.writeError(w, http.StatusInternalServerError, "Failed to create token")
-		return
-	}
-
-	h.writeJSON(w, http.StatusCreated, token)
-}
-
-func (h *HTTPHandler) getClubTokens(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	clubID, err := strconv.ParseUint(vars["clubId"], 10, 32)
-	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "Invalid club ID")
-		return
-	}
-
-	networkStr := r.URL.Query().Get("network")
-	var network models.Network
-	if networkStr != "" {
-		network = models.Network(networkStr)
-	}
-
-	tokens, err := h.service.GetTokensByClub(r.Context(), uint(clubID), network)
-	if err != nil {
-		h.logger.Error("Failed to get club tokens", map[string]interface{}{
-			"error":   err.Error(),
-			"club_id": clubID,
-		})
-		h.writeError(w, http.StatusInternalServerError, "Failed to get tokens")
-		return
-	}
-
-	h.writeJSON(w, http.StatusOK, tokens)
-}
-
-// Stats handlers
-
-func (h *HTTPHandler) getTransactionStats(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	clubID, err := strconv.ParseUint(vars["clubId"], 10, 32)
-	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "Invalid club ID")
-		return
-	}
-
-	// Parse query parameters
-	networkStr := r.URL.Query().Get("network")
-	fromStr := r.URL.Query().Get("from")
-	toStr := r.URL.Query().Get("to")
-
-	var network models.Network
-	if networkStr != "" {
-		network = models.Network(networkStr)
-	}
-
-	fromDate := time.Now().AddDate(0, -1, 0) // default to 1 month ago
-	toDate := time.Now()                     // default to now
-
-	if fromStr != "" {
-		if parsed, err := time.Parse("2006-01-02", fromStr); err == nil {
-			fromDate = parsed
-		}
-	}
-
-	if toStr != "" {
-		if parsed, err := time.Parse("2006-01-02", toStr); err == nil {
-			toDate = parsed
-		}
-	}
-
-	stats, err := h.service.GetTransactionStats(r.Context(), uint(clubID), network, fromDate, toDate)
-	if err != nil {
-		h.logger.Error("Failed to get transaction stats", map[string]interface{}{
-			"error":   err.Error(),
-			"club_id": clubID,
-		})
-		h.writeError(w, http.StatusInternalServerError, "Failed to get stats")
-		return
-	}
-
-	h.writeJSON(w, http.StatusOK, stats)
-}
-
-// Utility methods
-
-func (h *HTTPHandler) writeJSON(w http.ResponseWriter, status int, data interface{}) {
+func (h *HTTPHandler) writeResponse(w http.ResponseWriter, statusCode int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
-}
+	w.WriteHeader(statusCode)
 
-func (h *HTTPHandler) writeError(w http.ResponseWriter, status int, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]string{
-		"error": message,
-	})
-}
-
-// Middleware
-
-func (h *HTTPHandler) loggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		h.logger.Info("HTTP request", map[string]interface{}{
-			"method": r.Method,
-			"path":   r.URL.Path,
-			"remote": r.RemoteAddr,
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		h.logger.Error("Failed to encode response", map[string]interface{}{
+			"error": err.Error(),
 		})
-		next.ServeHTTP(w, r)
-	})
+	}
 }
 
-func (h *HTTPHandler) monitoringMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		next.ServeHTTP(w, r)
-		duration := time.Since(start)
-		h.monitoring.RecordHTTPRequest(r.Method, r.URL.Path, 200, duration)
+func (h *HTTPHandler) writeErrorResponse(w http.ResponseWriter, statusCode int, message string, err error) {
+	h.logger.Error(message, map[string]interface{}{
+		"status_code": statusCode,
+		"error":       err.Error(),
 	})
+
+	h.monitoring.RecordBusinessEvent("http_error", strconv.Itoa(statusCode))
+
+	response := map[string]interface{}{
+		"error":     message,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+
+	if err != nil {
+		response["details"] = err.Error()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+
+	if encodeErr := json.NewEncoder(w).Encode(response); encodeErr != nil {
+		h.logger.Error("Failed to encode error response", map[string]interface{}{
+			"error": encodeErr.Error(),
+		})
+	}
 }

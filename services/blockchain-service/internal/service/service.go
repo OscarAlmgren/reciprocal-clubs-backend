@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -13,7 +12,7 @@ import (
 	"reciprocal-clubs-backend/services/blockchain-service/internal/repository"
 )
 
-// BlockchainService handles business logic for blockchain operations
+// BlockchainService handles business logic for Hyperledger Fabric operations
 type BlockchainService struct {
 	repo       *repository.Repository
 	logger     logging.Logger
@@ -31,22 +30,29 @@ func NewService(repo *repository.Repository, logger logging.Logger, messaging me
 	}
 }
 
-// Transaction operations
+// Fabric Transaction operations
 
-// CreateTransaction creates a new blockchain transaction
-func (s *BlockchainService) CreateTransaction(ctx context.Context, req *CreateTransactionRequest) (*models.Transaction, error) {
-	transaction := &models.Transaction{
-		ClubID:      req.ClubID,
-		UserID:      req.UserID,
-		Network:     req.Network,
-		Type:        req.Type,
-		FromAddress: req.FromAddress,
-		ToAddress:   req.ToAddress,
-		Value:       req.Value,
-		GasLimit:    req.GasLimit,
-		GasPrice:    req.GasPrice,
-		Data:        req.Data,
-		Status:      models.TransactionStatusPending,
+// CreateTransaction creates a new Hyperledger Fabric transaction
+func (s *BlockchainService) CreateTransaction(ctx context.Context, req *CreateTransactionRequest) (*models.FabricTransaction, error) {
+	transaction := &models.FabricTransaction{
+		ClubID:        req.ClubID,
+		UserID:        req.UserID,
+		Type:          req.Type,
+		ChannelID:     req.ChannelID,
+		ChaincodeName: req.ChaincodeName,
+		Function:      req.Function,
+		Status:        models.FabricTransactionStatusPending,
+		ClientIdentity: req.ClientIdentity,
+	}
+
+	// Set transaction arguments
+	transaction.SetArgs(req.Args)
+
+	// Set transient map if provided
+	if req.TransientMap != nil {
+		if err := transaction.SetTransientMap(req.TransientMap); err != nil {
+			return nil, fmt.Errorf("failed to set transient map: %v", err)
+		}
 	}
 
 	// Set metadata if provided
@@ -57,499 +63,544 @@ func (s *BlockchainService) CreateTransaction(ctx context.Context, req *CreateTr
 	}
 
 	if err := s.repo.CreateTransaction(ctx, transaction); err != nil {
-		s.monitoring.RecordBusinessEvent("transaction_create_error", fmt.Sprintf("%d", req.ClubID))
+		s.monitoring.RecordBusinessEvent("fabric_transaction_create_error", fmt.Sprintf("%d", req.ClubID))
 		return nil, err
 	}
 
-	s.monitoring.RecordBusinessEvent("transaction_created", fmt.Sprintf("%d", req.ClubID))
+	s.monitoring.RecordBusinessEvent("fabric_transaction_created", fmt.Sprintf("%d", req.ClubID))
 
 	// Publish transaction created event
-	s.publishTransactionEvent(ctx, "transaction.created", transaction)
+	s.publishTransactionEvent(ctx, "fabric.transaction.created", transaction)
 
-	s.logger.Info("Transaction created", map[string]interface{}{
-		"transaction_id": transaction.ID,
-		"club_id":        transaction.ClubID,
-		"network":        transaction.Network,
-		"type":           transaction.Type,
-		"from_address":   transaction.FromAddress,
-		"to_address":     transaction.ToAddress,
+	s.logger.Info("Fabric transaction created", map[string]interface{}{
+		"transaction_id":   transaction.ID,
+		"club_id":          transaction.ClubID,
+		"channel_id":       transaction.ChannelID,
+		"chaincode_name":   transaction.ChaincodeName,
+		"function":         transaction.Function,
+		"type":             transaction.Type,
 	})
 
 	return transaction, nil
 }
 
 // GetTransactionByID retrieves a transaction by ID
-func (s *BlockchainService) GetTransactionByID(ctx context.Context, id uint) (*models.Transaction, error) {
+func (s *BlockchainService) GetTransactionByID(ctx context.Context, id uint) (*models.FabricTransaction, error) {
 	transaction, err := s.repo.GetTransactionByID(ctx, id)
 	if err != nil {
-		s.monitoring.RecordBusinessEvent("transaction_get_error", "1")
+		s.monitoring.RecordBusinessEvent("fabric_transaction_get_error", "1")
 		return nil, err
 	}
 
 	return transaction, nil
 }
 
-// GetTransactionByHash retrieves a transaction by hash
-func (s *BlockchainService) GetTransactionByHash(ctx context.Context, hash string) (*models.Transaction, error) {
-	transaction, err := s.repo.GetTransactionByHash(ctx, hash)
+// GetTransactionByTxID retrieves a transaction by Fabric transaction ID
+func (s *BlockchainService) GetTransactionByTxID(ctx context.Context, txID string) (*models.FabricTransaction, error) {
+	transaction, err := s.repo.GetTransactionByTxID(ctx, txID)
 	if err != nil {
-		s.monitoring.RecordBusinessEvent("transaction_get_by_hash_error", "1")
+		s.monitoring.RecordBusinessEvent("fabric_transaction_get_by_txid_error", "1")
 		return nil, err
 	}
 
 	return transaction, nil
 }
 
-// GetTransactionsByClub retrieves transactions for a club
-func (s *BlockchainService) GetTransactionsByClub(ctx context.Context, clubID uint, network models.Network, limit, offset int) ([]models.Transaction, error) {
-	transactions, err := s.repo.GetTransactionsByClub(ctx, clubID, network, limit, offset)
+// GetTransactionsByClubID retrieves transactions for a club
+func (s *BlockchainService) GetTransactionsByClubID(ctx context.Context, clubID uint, limit, offset int) ([]*models.FabricTransaction, error) {
+	transactions, err := s.repo.GetTransactionsByClubID(ctx, clubID, limit, offset)
 	if err != nil {
-		s.monitoring.RecordBusinessEvent("transactions_get_error", fmt.Sprintf("%d", clubID))
+		s.monitoring.RecordBusinessEvent("fabric_transactions_get_error", fmt.Sprintf("%d", clubID))
 		return nil, err
 	}
 
 	return transactions, nil
 }
 
-// GetTransactionsByUser retrieves transactions for a user
-func (s *BlockchainService) GetTransactionsByUser(ctx context.Context, userID string, clubID uint, network models.Network, limit, offset int) ([]models.Transaction, error) {
-	transactions, err := s.repo.GetTransactionsByUser(ctx, userID, clubID, network, limit, offset)
-	if err != nil {
-		s.monitoring.RecordBusinessEvent("user_transactions_get_error", fmt.Sprintf("%d", clubID))
-		return nil, err
-	}
-
-	return transactions, nil
-}
-
-// SubmitTransaction submits a transaction to the blockchain
-func (s *BlockchainService) SubmitTransaction(ctx context.Context, id uint, hash string, nonce uint64) (*models.Transaction, error) {
+// SubmitTransaction submits a transaction to Hyperledger Fabric
+func (s *BlockchainService) SubmitTransaction(ctx context.Context, id uint, txID string, endorsingPeers []string) (*models.FabricTransaction, error) {
 	transaction, err := s.repo.GetTransactionByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	if transaction.Status != models.TransactionStatusPending {
-		return nil, fmt.Errorf("transaction is not in pending status")
-	}
-
-	transaction.MarkAsSubmitted(hash)
-	transaction.Nonce = nonce
+	// Mark as submitted
+	transaction.MarkAsSubmitted(txID, endorsingPeers)
 
 	if err := s.repo.UpdateTransaction(ctx, transaction); err != nil {
-		s.monitoring.RecordBusinessEvent("transaction_submit_error", fmt.Sprintf("%d", transaction.ClubID))
+		s.monitoring.RecordBusinessEvent("fabric_transaction_submit_error", fmt.Sprintf("%d", transaction.ClubID))
 		return nil, err
 	}
 
-	s.monitoring.RecordBusinessEvent("transaction_submitted", fmt.Sprintf("%d", transaction.ClubID))
+	s.monitoring.RecordBusinessEvent("fabric_transaction_submitted", fmt.Sprintf("%d", transaction.ClubID))
 
 	// Publish transaction submitted event
-	s.publishTransactionEvent(ctx, "transaction.submitted", transaction)
+	s.publishTransactionEvent(ctx, "fabric.transaction.submitted", transaction)
 
-	s.logger.Info("Transaction submitted", map[string]interface{}{
-		"transaction_id": transaction.ID,
-		"hash":           transaction.Hash,
-		"nonce":          transaction.Nonce,
+	s.logger.Info("Fabric transaction submitted", map[string]interface{}{
+		"transaction_id":    transaction.ID,
+		"club_id":           transaction.ClubID,
+		"tx_id":             transaction.TxID,
+		"endorsing_peers":   transaction.EndorsingPeers,
+		"endorsement_count": transaction.EndorsementCount,
 	})
 
 	return transaction, nil
 }
 
-// ConfirmTransaction confirms a transaction on the blockchain
-func (s *BlockchainService) ConfirmTransaction(ctx context.Context, hash string, blockNumber uint64, blockHash string, gasUsed uint64) (*models.Transaction, error) {
-	transaction, err := s.repo.GetTransactionByHash(ctx, hash)
+// ConfirmTransaction confirms a transaction in a block
+func (s *BlockchainService) ConfirmTransaction(ctx context.Context, txID string, blockNumber uint64, blockHash string, txIndex uint) (*models.FabricTransaction, error) {
+	transaction, err := s.repo.GetTransactionByTxID(ctx, txID)
 	if err != nil {
 		return nil, err
 	}
 
-	transaction.MarkAsConfirmed(blockNumber, blockHash, gasUsed)
-	transaction.ConfirmationCount++
+	// Mark as confirmed
+	transaction.MarkAsConfirmed(blockNumber, blockHash, txIndex)
 
 	if err := s.repo.UpdateTransaction(ctx, transaction); err != nil {
-		s.monitoring.RecordBusinessEvent("transaction_confirm_error", fmt.Sprintf("%d", transaction.ClubID))
+		s.monitoring.RecordBusinessEvent("fabric_transaction_confirm_error", fmt.Sprintf("%d", transaction.ClubID))
 		return nil, err
 	}
 
-	s.monitoring.RecordBusinessEvent("transaction_confirmed", fmt.Sprintf("%d", transaction.ClubID))
+	s.monitoring.RecordBusinessEvent("fabric_transaction_confirmed", fmt.Sprintf("%d", transaction.ClubID))
 
 	// Publish transaction confirmed event
-	s.publishTransactionEvent(ctx, "transaction.confirmed", transaction)
+	s.publishTransactionEvent(ctx, "fabric.transaction.confirmed", transaction)
 
-	s.logger.Info("Transaction confirmed", map[string]interface{}{
+	s.logger.Info("Fabric transaction confirmed", map[string]interface{}{
 		"transaction_id": transaction.ID,
-		"hash":           transaction.Hash,
+		"club_id":        transaction.ClubID,
+		"tx_id":          transaction.TxID,
 		"block_number":   transaction.BlockNumber,
-		"confirmations":  transaction.ConfirmationCount,
+		"block_hash":     transaction.BlockHash,
+		"tx_index":       transaction.TxIndex,
 	})
 
 	return transaction, nil
 }
 
 // FailTransaction marks a transaction as failed
-func (s *BlockchainService) FailTransaction(ctx context.Context, hash string, errorMsg string) (*models.Transaction, error) {
-	transaction, err := s.repo.GetTransactionByHash(ctx, hash)
+func (s *BlockchainService) FailTransaction(ctx context.Context, txID string, errorMessage string) (*models.FabricTransaction, error) {
+	transaction, err := s.repo.GetTransactionByTxID(ctx, txID)
 	if err != nil {
 		return nil, err
 	}
 
-	transaction.MarkAsFailed(errorMsg)
+	// Mark as failed
+	transaction.MarkAsFailed(errorMessage)
 
 	if err := s.repo.UpdateTransaction(ctx, transaction); err != nil {
-		s.monitoring.RecordBusinessEvent("transaction_fail_error", fmt.Sprintf("%d", transaction.ClubID))
+		s.monitoring.RecordBusinessEvent("fabric_transaction_fail_error", fmt.Sprintf("%d", transaction.ClubID))
 		return nil, err
 	}
 
-	s.monitoring.RecordBusinessEvent("transaction_failed", fmt.Sprintf("%d", transaction.ClubID))
+	s.monitoring.RecordBusinessEvent("fabric_transaction_failed", fmt.Sprintf("%d", transaction.ClubID))
 
 	// Publish transaction failed event
-	s.publishTransactionEvent(ctx, "transaction.failed", transaction)
+	s.publishTransactionEvent(ctx, "fabric.transaction.failed", transaction)
 
-	s.logger.Error("Transaction failed", map[string]interface{}{
+	s.logger.Warn("Fabric transaction failed", map[string]interface{}{
 		"transaction_id": transaction.ID,
-		"hash":           transaction.Hash,
-		"error":          errorMsg,
+		"club_id":        transaction.ClubID,
+		"tx_id":          transaction.TxID,
+		"error":          errorMessage,
 	})
 
 	return transaction, nil
 }
 
-// Contract operations
+// Channel operations
 
-// CreateContract creates a new smart contract record
-func (s *BlockchainService) CreateContract(ctx context.Context, req *CreateContractRequest) (*models.Contract, error) {
-	contract := &models.Contract{
-		ClubID:      req.ClubID,
-		Network:     req.Network,
-		Name:        req.Name,
-		Address:     req.Address,
-		ABI:         req.ABI,
-		Bytecode:    req.Bytecode,
-		Version:     req.Version,
-		IsDeployed:  req.IsDeployed,
-		DeployedBy:  req.DeployedBy,
-		Description: req.Description,
+// CreateChannel creates a new Fabric channel
+func (s *BlockchainService) CreateChannel(ctx context.Context, req *CreateChannelRequest) (*models.Channel, error) {
+	channel := &models.Channel{
+		ClubID:          req.ClubID,
+		ChannelID:       req.ChannelID,
+		Name:            req.Name,
+		Description:     req.Description,
+		Type:            req.Type,
+		Organizations:   req.Organizations,
+		BatchSize:       req.BatchSize,
+		BatchTimeout:    req.BatchTimeout,
+		MaxMessageCount: req.MaxMessageCount,
+		IsActive:        true,
 	}
 
-	if req.IsDeployed {
-		now := time.Now()
-		contract.DeployedAt = &now
-	}
-
-	if err := s.repo.CreateContract(ctx, contract); err != nil {
-		s.monitoring.RecordBusinessEvent("contract_create_error", fmt.Sprintf("%d", req.ClubID))
+	if err := s.repo.CreateChannel(ctx, channel); err != nil {
+		s.monitoring.RecordBusinessEvent("fabric_channel_create_error", fmt.Sprintf("%d", req.ClubID))
 		return nil, err
 	}
 
-	s.monitoring.RecordBusinessEvent("contract_created", fmt.Sprintf("%d", req.ClubID))
+	s.monitoring.RecordBusinessEvent("fabric_channel_created", fmt.Sprintf("%d", req.ClubID))
 
-	// Publish contract created event
-	s.publishContractEvent(ctx, "contract.created", contract)
+	// Publish channel created event
+	s.publishChannelEvent(ctx, "fabric.channel.created", channel)
 
-	return contract, nil
+	s.logger.Info("Fabric channel created", map[string]interface{}{
+		"channel_id":     channel.ChannelID,
+		"club_id":        channel.ClubID,
+		"name":           channel.Name,
+		"type":           channel.Type,
+		"organizations":  channel.Organizations,
+	})
+
+	return channel, nil
 }
 
-// GetContractByID retrieves a contract by ID
-func (s *BlockchainService) GetContractByID(ctx context.Context, id uint) (*models.Contract, error) {
-	contract, err := s.repo.GetContractByID(ctx, id)
-	if err != nil {
-		s.monitoring.RecordBusinessEvent("contract_get_error", "1")
-		return nil, err
-	}
-
-	return contract, nil
+// GetChannelByID retrieves a channel by database ID
+func (s *BlockchainService) GetChannelByID(ctx context.Context, id uint) (*models.Channel, error) {
+	return s.repo.GetChannelByID(ctx, id)
 }
 
-// GetContractsByClub retrieves contracts for a club
-func (s *BlockchainService) GetContractsByClub(ctx context.Context, clubID uint, network models.Network) ([]models.Contract, error) {
-	contracts, err := s.repo.GetContractsByClub(ctx, clubID, network)
-	if err != nil {
-		s.monitoring.RecordBusinessEvent("contracts_get_error", fmt.Sprintf("%d", clubID))
-		return nil, err
-	}
-
-	return contracts, nil
+// GetChannelByChannelID retrieves a channel by Fabric channel ID
+func (s *BlockchainService) GetChannelByChannelID(ctx context.Context, channelID string) (*models.Channel, error) {
+	return s.repo.GetChannelByChannelID(ctx, channelID)
 }
 
-// Wallet operations
-
-// CreateWallet creates a new wallet record
-func (s *BlockchainService) CreateWallet(ctx context.Context, req *CreateWalletRequest) (*models.Wallet, error) {
-	wallet := &models.Wallet{
-		ClubID:   req.ClubID,
-		UserID:   req.UserID,
-		Network:  req.Network,
-		Address:  req.Address,
-		Balance:  "0",
-		IsActive: true,
-	}
-
-	if err := s.repo.CreateWallet(ctx, wallet); err != nil {
-		s.monitoring.RecordBusinessEvent("wallet_create_error", fmt.Sprintf("%d", req.ClubID))
-		return nil, err
-	}
-
-	s.monitoring.RecordBusinessEvent("wallet_created", fmt.Sprintf("%d", req.ClubID))
-
-	// Publish wallet created event
-	s.publishWalletEvent(ctx, "wallet.created", wallet)
-
-	return wallet, nil
+// GetChannelsByClubID retrieves channels for a club
+func (s *BlockchainService) GetChannelsByClubID(ctx context.Context, clubID uint) ([]*models.Channel, error) {
+	return s.repo.GetChannelsByClubID(ctx, clubID)
 }
 
-// GetWalletsByUser retrieves wallets for a user
-func (s *BlockchainService) GetWalletsByUser(ctx context.Context, userID string, clubID uint, network models.Network) ([]models.Wallet, error) {
-	wallets, err := s.repo.GetWalletsByUser(ctx, userID, clubID, network)
-	if err != nil {
-		s.monitoring.RecordBusinessEvent("wallets_get_error", fmt.Sprintf("%d", clubID))
+// Chaincode operations
+
+// CreateChaincode creates a new chaincode record
+func (s *BlockchainService) CreateChaincode(ctx context.Context, req *CreateChaincodeRequest) (*models.Chaincode, error) {
+	chaincode := &models.Chaincode{
+		ClubID:            req.ClubID,
+		ChannelID:         req.ChannelID,
+		Name:              req.Name,
+		Version:           req.Version,
+		Language:          req.Language,
+		PackageID:         req.PackageID,
+		PackageLabel:      req.PackageLabel,
+		PackagePath:       req.PackagePath,
+		EndorsementPolicy: req.EndorsementPolicy,
+		Description:       req.Description,
+		Sequence:          req.Sequence,
+		IsInstalled:       false,
+		IsCommitted:       false,
+	}
+
+	if err := s.repo.CreateChaincode(ctx, chaincode); err != nil {
+		s.monitoring.RecordBusinessEvent("fabric_chaincode_create_error", fmt.Sprintf("%d", req.ClubID))
 		return nil, err
 	}
 
-	return wallets, nil
+	s.monitoring.RecordBusinessEvent("fabric_chaincode_created", fmt.Sprintf("%d", req.ClubID))
+
+	s.logger.Info("Fabric chaincode created", map[string]interface{}{
+		"chaincode_id":   chaincode.ID,
+		"club_id":        chaincode.ClubID,
+		"channel_id":     chaincode.ChannelID,
+		"name":           chaincode.Name,
+		"version":        chaincode.Version,
+		"language":       chaincode.Language,
+	})
+
+	return chaincode, nil
 }
 
-// UpdateWalletBalance updates a wallet's balance
-func (s *BlockchainService) UpdateWalletBalance(ctx context.Context, address string, network models.Network, balance string, tokenBalances map[string]string) (*models.Wallet, error) {
-	wallet, err := s.repo.GetWalletByAddress(ctx, address, network)
-	if err != nil {
-		return nil, err
-	}
-
-	wallet.UpdateBalance(balance)
-
-	if tokenBalances != nil {
-		if err := wallet.SetTokenBalances(tokenBalances); err != nil {
-			return nil, fmt.Errorf("failed to set token balances: %v", err)
-		}
-	}
-
-	if err := s.repo.UpdateWallet(ctx, wallet); err != nil {
-		s.monitoring.RecordBusinessEvent("wallet_balance_update_error", fmt.Sprintf("%d", wallet.ClubID))
-		return nil, err
-	}
-
-	s.monitoring.RecordBusinessEvent("wallet_balance_updated", fmt.Sprintf("%d", wallet.ClubID))
-
-	// Publish wallet updated event
-	s.publishWalletEvent(ctx, "wallet.balance_updated", wallet)
-
-	return wallet, nil
+// GetChaincodeByID retrieves a chaincode by ID
+func (s *BlockchainService) GetChaincodeByID(ctx context.Context, id uint) (*models.Chaincode, error) {
+	return s.repo.GetChaincodeByID(ctx, id)
 }
 
-// Token operations
-
-// CreateToken creates a new token record
-func (s *BlockchainService) CreateToken(ctx context.Context, req *CreateTokenRequest) (*models.Token, error) {
-	token := &models.Token{
-		ClubID:      req.ClubID,
-		Network:     req.Network,
-		ContractID:  req.ContractID,
-		Name:        req.Name,
-		Symbol:      req.Symbol,
-		Decimals:    req.Decimals,
-		TotalSupply: req.TotalSupply,
-		MaxSupply:   req.MaxSupply,
-		IsMintable:  req.IsMintable,
-		IsBurnable:  req.IsBurnable,
-		IsPausable:  req.IsPausable,
-		IsActive:    true,
-	}
-
-	if err := s.repo.CreateToken(ctx, token); err != nil {
-		s.monitoring.RecordBusinessEvent("token_create_error", fmt.Sprintf("%d", req.ClubID))
-		return nil, err
-	}
-
-	s.monitoring.RecordBusinessEvent("token_created", fmt.Sprintf("%d", req.ClubID))
-
-	// Publish token created event
-	s.publishTokenEvent(ctx, "token.created", token)
-
-	return token, nil
+// GetChaincodesByChannelID retrieves chaincodes for a channel
+func (s *BlockchainService) GetChaincodesByChannelID(ctx context.Context, channelID string) ([]*models.Chaincode, error) {
+	return s.repo.GetChaincodesByChannelID(ctx, channelID)
 }
 
-// GetTokensByClub retrieves tokens for a club
-func (s *BlockchainService) GetTokensByClub(ctx context.Context, clubID uint, network models.Network) ([]models.Token, error) {
-	tokens, err := s.repo.GetTokensByClub(ctx, clubID, network)
-	if err != nil {
-		s.monitoring.RecordBusinessEvent("tokens_get_error", fmt.Sprintf("%d", clubID))
-		return nil, err
-	}
-
-	return tokens, nil
-}
-
-// ProcessPendingTransactions processes pending transactions for monitoring
-func (s *BlockchainService) ProcessPendingTransactions(ctx context.Context, network models.Network) error {
-	transactions, err := s.repo.GetPendingTransactions(ctx, network, 100)
+// MarkChaincodeInstalled marks a chaincode as installed
+func (s *BlockchainService) MarkChaincodeInstalled(ctx context.Context, id uint) error {
+	chaincode, err := s.repo.GetChaincodeByID(ctx, id)
 	if err != nil {
 		return err
 	}
 
-	for _, transaction := range transactions {
-		// Here you would implement actual blockchain monitoring logic
-		// This is a placeholder for the real implementation
-		s.logger.Info("Processing pending transaction", map[string]interface{}{
-			"transaction_id": transaction.ID,
-			"hash":           transaction.Hash,
-			"network":        transaction.Network,
-			"status":         transaction.Status,
-		})
+	chaincode.IsInstalled = true
+	return s.repo.UpdateChaincode(ctx, chaincode)
+}
 
-		// Example: check transaction status on blockchain
-		// If confirmed, call s.ConfirmTransaction()
-		// If failed, call s.FailTransaction()
+// MarkChaincodeCommitted marks a chaincode as committed
+func (s *BlockchainService) MarkChaincodeCommitted(ctx context.Context, id uint) error {
+	chaincode, err := s.repo.GetChaincodeByID(ctx, id)
+	if err != nil {
+		return err
 	}
 
+	chaincode.IsCommitted = true
+	return s.repo.UpdateChaincode(ctx, chaincode)
+}
+
+// Block operations
+
+// CreateBlock creates a new block record
+func (s *BlockchainService) CreateBlock(ctx context.Context, req *CreateBlockRequest) (*models.Block, error) {
+	block := &models.Block{
+		ClubID:           req.ClubID,
+		ChannelID:        req.ChannelID,
+		BlockNumber:      req.BlockNumber,
+		BlockHash:        req.BlockHash,
+		PreviousHash:     req.PreviousHash,
+		DataHash:         req.DataHash,
+		TransactionCount: req.TransactionCount,
+		Timestamp:        req.Timestamp,
+		CreatedBy:        req.CreatedBy,
+	}
+
+	if err := s.repo.CreateBlock(ctx, block); err != nil {
+		s.monitoring.RecordBusinessEvent("fabric_block_create_error", fmt.Sprintf("%d", req.ClubID))
+		return nil, err
+	}
+
+	s.monitoring.RecordBusinessEvent("fabric_block_created", fmt.Sprintf("%d", req.ClubID))
+
+	s.logger.Info("Fabric block created", map[string]interface{}{
+		"block_id":           block.ID,
+		"club_id":            block.ClubID,
+		"channel_id":         block.ChannelID,
+		"block_number":       block.BlockNumber,
+		"transaction_count":  block.TransactionCount,
+	})
+
+	return block, nil
+}
+
+// GetBlockByHash retrieves a block by hash
+func (s *BlockchainService) GetBlockByHash(ctx context.Context, blockHash string) (*models.Block, error) {
+	return s.repo.GetBlockByHash(ctx, blockHash)
+}
+
+// GetBlocksByChannelID retrieves blocks for a channel
+func (s *BlockchainService) GetBlocksByChannelID(ctx context.Context, channelID string, limit, offset int) ([]*models.Block, error) {
+	return s.repo.GetBlocksByChannelID(ctx, channelID, limit, offset)
+}
+
+// Event operations
+
+// CreateEvent creates a new chaincode event record
+func (s *BlockchainService) CreateEvent(ctx context.Context, req *CreateEventRequest) (*models.Event, error) {
+	event := &models.Event{
+		ClubID:        req.ClubID,
+		ChannelID:     req.ChannelID,
+		ChaincodeName: req.ChaincodeName,
+		EventName:     req.EventName,
+		TxID:          req.TxID,
+		BlockNumber:   req.BlockNumber,
+		Payload:       req.Payload,
+		EventTime:     req.EventTime,
+		IsProcessed:   false,
+	}
+
+	if err := s.repo.CreateEvent(ctx, event); err != nil {
+		s.monitoring.RecordBusinessEvent("fabric_event_create_error", fmt.Sprintf("%d", req.ClubID))
+		return nil, err
+	}
+
+	s.monitoring.RecordBusinessEvent("fabric_event_created", fmt.Sprintf("%d", req.ClubID))
+
+	s.logger.Info("Fabric event created", map[string]interface{}{
+		"event_id":       event.ID,
+		"club_id":        event.ClubID,
+		"channel_id":     event.ChannelID,
+		"chaincode_name": event.ChaincodeName,
+		"event_name":     event.EventName,
+		"tx_id":          event.TxID,
+	})
+
+	return event, nil
+}
+
+// GetUnprocessedEvents retrieves unprocessed events
+func (s *BlockchainService) GetUnprocessedEvents(ctx context.Context, limit int) ([]*models.Event, error) {
+	return s.repo.GetUnprocessedEvents(ctx, limit)
+}
+
+// MarkEventProcessed marks an event as processed
+func (s *BlockchainService) MarkEventProcessed(ctx context.Context, id uint) error {
+	event, err := s.repo.GetEventByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	event.IsProcessed = true
+	event.ProcessedAt = &now
+
+	return s.repo.UpdateEvent(ctx, event)
+}
+
+// Health check and utility operations
+
+// HealthCheck performs a health check of the blockchain service
+func (s *BlockchainService) HealthCheck(ctx context.Context) error {
+	// Check database connectivity
+	if err := s.repo.HealthCheck(ctx); err != nil {
+		return fmt.Errorf("database health check failed: %v", err)
+	}
+
+	s.logger.Debug("Blockchain service health check passed", nil)
 	return nil
 }
 
-// GetTransactionStats retrieves transaction statistics
-func (s *BlockchainService) GetTransactionStats(ctx context.Context, clubID uint, network models.Network, fromDate, toDate time.Time) (map[string]interface{}, error) {
-	stats, err := s.repo.GetTransactionStats(ctx, clubID, network, fromDate, toDate)
+// GetServiceStats returns service statistics
+func (s *BlockchainService) GetServiceStats(ctx context.Context, clubID uint) (*ServiceStats, error) {
+	stats := &ServiceStats{
+		ClubID: clubID,
+	}
+
+	// Get transaction counts by status
+	pendingCount, err := s.repo.GetTransactionCountByStatus(ctx, clubID, models.FabricTransactionStatusPending)
 	if err != nil {
-		s.monitoring.RecordBusinessEvent("stats_get_error", fmt.Sprintf("%d", clubID))
 		return nil, err
 	}
+	stats.PendingTransactions = pendingCount
+
+	submittedCount, err := s.repo.GetTransactionCountByStatus(ctx, clubID, models.FabricTransactionStatusSubmitted)
+	if err != nil {
+		return nil, err
+	}
+	stats.SubmittedTransactions = submittedCount
+
+	confirmedCount, err := s.repo.GetTransactionCountByStatus(ctx, clubID, models.FabricTransactionStatusConfirmed)
+	if err != nil {
+		return nil, err
+	}
+	stats.ConfirmedTransactions = confirmedCount
+
+	failedCount, err := s.repo.GetTransactionCountByStatus(ctx, clubID, models.FabricTransactionStatusFailed)
+	if err != nil {
+		return nil, err
+	}
+	stats.FailedTransactions = failedCount
+
+	// Get channel count
+	channels, err := s.repo.GetChannelsByClubID(ctx, clubID)
+	if err != nil {
+		return nil, err
+	}
+	stats.ActiveChannels = uint(len(channels))
 
 	return stats, nil
 }
 
-// Helper methods for event publishing
+// Event publishing helpers
 
-func (s *BlockchainService) publishTransactionEvent(ctx context.Context, eventType string, transaction *models.Transaction) {
-	data := map[string]interface{}{
-		"transaction_id": transaction.ID,
-		"club_id":        transaction.ClubID,
-		"user_id":        transaction.UserID,
-		"network":        transaction.Network,
-		"type":           transaction.Type,
-		"status":         transaction.Status,
-		"hash":           transaction.Hash,
-		"from_address":   transaction.FromAddress,
-		"to_address":     transaction.ToAddress,
-		"value":          transaction.Value,
+func (s *BlockchainService) publishTransactionEvent(ctx context.Context, eventType string, transaction *models.FabricTransaction) {
+	eventData := map[string]interface{}{
+		"transaction_id":   transaction.ID,
+		"club_id":          transaction.ClubID,
+		"user_id":          transaction.UserID,
+		"type":             transaction.Type,
+		"status":           transaction.Status,
+		"channel_id":       transaction.ChannelID,
+		"chaincode_name":   transaction.ChaincodeName,
+		"function":         transaction.Function,
+		"tx_id":            transaction.TxID,
+		"block_number":     transaction.BlockNumber,
+		"timestamp":        time.Now(),
+	}
+
+	if err := s.messaging.Publish(ctx, eventType, eventData); err != nil {
+		s.logger.Error("Failed to publish transaction event", map[string]interface{}{
+			"event_type":     eventType,
+			"transaction_id": transaction.ID,
+			"error":          err.Error(),
+		})
+	}
+}
+
+func (s *BlockchainService) publishChannelEvent(ctx context.Context, eventType string, channel *models.Channel) {
+	eventData := map[string]interface{}{
+		"channel_id":     channel.ChannelID,
+		"club_id":        channel.ClubID,
+		"name":           channel.Name,
+		"type":           channel.Type,
+		"organizations":  channel.Organizations,
+		"is_active":      channel.IsActive,
 		"timestamp":      time.Now(),
 	}
 
-	jsonData, _ := json.Marshal(data)
-	if err := s.messaging.Publish(ctx, eventType, jsonData); err != nil {
-		s.logger.Error("Failed to publish transaction event", map[string]interface{}{
-			"error":          err.Error(),
-			"event_type":     eventType,
-			"transaction_id": transaction.ID,
-		})
-	}
-}
-
-func (s *BlockchainService) publishContractEvent(ctx context.Context, eventType string, contract *models.Contract) {
-	data := map[string]interface{}{
-		"contract_id": contract.ID,
-		"club_id":     contract.ClubID,
-		"network":     contract.Network,
-		"name":        contract.Name,
-		"address":     contract.Address,
-		"is_deployed": contract.IsDeployed,
-		"timestamp":   time.Now(),
-	}
-
-	jsonData, _ := json.Marshal(data)
-	if err := s.messaging.Publish(ctx, eventType, jsonData); err != nil {
-		s.logger.Error("Failed to publish contract event", map[string]interface{}{
-			"error":       err.Error(),
-			"event_type":  eventType,
-			"contract_id": contract.ID,
-		})
-	}
-}
-
-func (s *BlockchainService) publishWalletEvent(ctx context.Context, eventType string, wallet *models.Wallet) {
-	data := map[string]interface{}{
-		"wallet_id": wallet.ID,
-		"club_id":   wallet.ClubID,
-		"user_id":   wallet.UserID,
-		"network":   wallet.Network,
-		"address":   wallet.Address,
-		"balance":   wallet.Balance,
-		"timestamp": time.Now(),
-	}
-
-	jsonData, _ := json.Marshal(data)
-	if err := s.messaging.Publish(ctx, eventType, jsonData); err != nil {
-		s.logger.Error("Failed to publish wallet event", map[string]interface{}{
-			"error":     err.Error(),
+	if err := s.messaging.Publish(ctx, eventType, eventData); err != nil {
+		s.logger.Error("Failed to publish channel event", map[string]interface{}{
 			"event_type": eventType,
-			"wallet_id": wallet.ID,
-		})
-	}
-}
-
-func (s *BlockchainService) publishTokenEvent(ctx context.Context, eventType string, token *models.Token) {
-	data := map[string]interface{}{
-		"token_id":     token.ID,
-		"club_id":      token.ClubID,
-		"network":      token.Network,
-		"name":         token.Name,
-		"symbol":       token.Symbol,
-		"total_supply": token.TotalSupply,
-		"timestamp":    time.Now(),
-	}
-
-	jsonData, _ := json.Marshal(data)
-	if err := s.messaging.Publish(ctx, eventType, jsonData); err != nil {
-		s.logger.Error("Failed to publish token event", map[string]interface{}{
+			"channel_id": channel.ChannelID,
 			"error":      err.Error(),
-			"event_type": eventType,
-			"token_id":   token.ID,
 		})
 	}
 }
 
-// Request/Response types
+// Request and response types for Fabric operations
 
 type CreateTransactionRequest struct {
-	ClubID      uint                   `json:"club_id" validate:"required"`
-	UserID      string                 `json:"user_id" validate:"required"`
-	Network     models.Network         `json:"network" validate:"required"`
-	Type        models.TransactionType `json:"type" validate:"required"`
-	FromAddress string                 `json:"from_address" validate:"required"`
-	ToAddress   string                 `json:"to_address" validate:"required"`
-	Value       string                 `json:"value" validate:"required"`
-	GasLimit    uint64                 `json:"gas_limit" validate:"required"`
-	GasPrice    string                 `json:"gas_price" validate:"required"`
-	Data        string                 `json:"data,omitempty"`
-	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	ClubID         uint                                   `json:"club_id" validate:"required"`
+	UserID         string                                 `json:"user_id" validate:"required"`
+	Type           models.FabricTransactionType           `json:"type" validate:"required"`
+	ChannelID      string                                 `json:"channel_id" validate:"required"`
+	ChaincodeName  string                                 `json:"chaincode_name" validate:"required"`
+	Function       string                                 `json:"function" validate:"required"`
+	Args           []string                               `json:"args"`
+	TransientMap   map[string][]byte                      `json:"transient_map,omitempty"`
+	Metadata       map[string]interface{}                 `json:"metadata,omitempty"`
+	ClientIdentity string                                 `json:"client_identity,omitempty"`
 }
 
-type CreateContractRequest struct {
-	ClubID      uint           `json:"club_id" validate:"required"`
-	Network     models.Network `json:"network" validate:"required"`
-	Name        string         `json:"name" validate:"required"`
-	Address     string         `json:"address" validate:"required"`
-	ABI         string         `json:"abi"`
-	Bytecode    string         `json:"bytecode,omitempty"`
-	Version     string         `json:"version"`
-	IsDeployed  bool           `json:"is_deployed"`
-	DeployedBy  string         `json:"deployed_by,omitempty"`
-	Description string         `json:"description,omitempty"`
+type CreateChannelRequest struct {
+	ClubID          uint                   `json:"club_id" validate:"required"`
+	ChannelID       string                 `json:"channel_id" validate:"required"`
+	Name            string                 `json:"name" validate:"required"`
+	Description     string                 `json:"description"`
+	Type            models.ChannelType     `json:"type" validate:"required"`
+	Organizations   []string               `json:"organizations" validate:"required"`
+	BatchSize       uint                   `json:"batch_size"`
+	BatchTimeout    string                 `json:"batch_timeout"`
+	MaxMessageCount uint                   `json:"max_message_count"`
 }
 
-type CreateWalletRequest struct {
-	ClubID  uint           `json:"club_id" validate:"required"`
-	UserID  string         `json:"user_id" validate:"required"`
-	Network models.Network `json:"network" validate:"required"`
-	Address string         `json:"address" validate:"required"`
+type CreateChaincodeRequest struct {
+	ClubID            uint   `json:"club_id" validate:"required"`
+	ChannelID         string `json:"channel_id" validate:"required"`
+	Name              string `json:"name" validate:"required"`
+	Version           string `json:"version" validate:"required"`
+	Language          string `json:"language" validate:"required"`
+	PackageID         string `json:"package_id"`
+	PackageLabel      string `json:"package_label"`
+	PackagePath       string `json:"package_path"`
+	EndorsementPolicy string `json:"endorsement_policy"`
+	Description       string `json:"description"`
+	Sequence          uint64 `json:"sequence"`
 }
 
-type CreateTokenRequest struct {
-	ClubID      uint           `json:"club_id" validate:"required"`
-	Network     models.Network `json:"network" validate:"required"`
-	ContractID  uint           `json:"contract_id" validate:"required"`
-	Name        string         `json:"name" validate:"required"`
-	Symbol      string         `json:"symbol" validate:"required"`
-	Decimals    uint8          `json:"decimals" validate:"required"`
-	TotalSupply string         `json:"total_supply" validate:"required"`
-	MaxSupply   string         `json:"max_supply,omitempty"`
-	IsMintable  bool           `json:"is_mintable"`
-	IsBurnable  bool           `json:"is_burnable"`
-	IsPausable  bool           `json:"is_pausable"`
+type CreateBlockRequest struct {
+	ClubID           uint      `json:"club_id" validate:"required"`
+	ChannelID        string    `json:"channel_id" validate:"required"`
+	BlockNumber      uint64    `json:"block_number" validate:"required"`
+	BlockHash        string    `json:"block_hash" validate:"required"`
+	PreviousHash     string    `json:"previous_hash" validate:"required"`
+	DataHash         string    `json:"data_hash" validate:"required"`
+	TransactionCount uint      `json:"transaction_count"`
+	Timestamp        time.Time `json:"timestamp"`
+	CreatedBy        string    `json:"created_by"`
+}
+
+type CreateEventRequest struct {
+	ClubID        uint      `json:"club_id" validate:"required"`
+	ChannelID     string    `json:"channel_id" validate:"required"`
+	ChaincodeName string    `json:"chaincode_name" validate:"required"`
+	EventName     string    `json:"event_name" validate:"required"`
+	TxID          string    `json:"tx_id" validate:"required"`
+	BlockNumber   uint64    `json:"block_number" validate:"required"`
+	Payload       string    `json:"payload"`
+	EventTime     time.Time `json:"event_time"`
+}
+
+type ServiceStats struct {
+	ClubID                 uint `json:"club_id"`
+	PendingTransactions    uint `json:"pending_transactions"`
+	SubmittedTransactions  uint `json:"submitted_transactions"`
+	ConfirmedTransactions  uint `json:"confirmed_transactions"`
+	FailedTransactions     uint `json:"failed_transactions"`
+	ActiveChannels         uint `json:"active_channels"`
 }

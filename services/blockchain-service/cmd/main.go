@@ -52,10 +52,10 @@ func main() {
 
 	// Auto-migrate database schema
 	if err := db.Migrate(
-		&models.Transaction{},
-		&models.Contract{},
-		&models.Wallet{},
-		&models.Token{},
+		&models.FabricTransaction{},
+		&models.Channel{},
+		&models.Chaincode{},
+		&models.Peer{},
 		&models.Block{},
 		&models.Event{},
 	); err != nil {
