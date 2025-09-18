@@ -11,16 +11,16 @@ import (
 	"reciprocal-clubs-backend/pkg/shared/logging"
 	"reciprocal-clubs-backend/pkg/shared/messaging"
 	"reciprocal-clubs-backend/pkg/shared/monitoring"
+	"reciprocal-clubs-backend/services/api-gateway/graph"
+	"reciprocal-clubs-backend/services/api-gateway/graph/generated"
 	"reciprocal-clubs-backend/services/api-gateway/internal/clients"
 	"reciprocal-clubs-backend/services/api-gateway/internal/middleware"
 
-	"github.com/99designs/gqlgen/graphql"
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/handler/extension"
 	"github.com/99designs/gqlgen/graphql/handler/lru"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
 	"github.com/99designs/gqlgen/graphql/playground"
-	"github.com/vektah/gqlparser/v2/ast"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 )
@@ -134,9 +134,19 @@ func (s *Server) setupGraphQLRoutes() {
 
 // createGraphQLServer creates and configures the GraphQL server
 func (s *Server) createGraphQLServer() http.Handler {
-	// TODO: Implement proper GraphQL schema
-	// For now, create a placeholder schema
-	var schema graphql.ExecutableSchema = &PlaceholderSchema{}
+	// Create resolver with dependencies
+	resolver := graph.NewResolver(
+		s.logger,
+		s.monitor,
+		s.authProvider,
+		s.messageBus,
+		s.clients,
+	)
+
+	// Create executable schema
+	schema := generated.NewExecutableSchema(generated.Config{
+		Resolvers: resolver,
+	})
 
 	// Create GraphQL handler
 	srv := handler.New(schema)
@@ -308,40 +318,3 @@ func (h *serviceClientsHealthChecker) HealthCheck(ctx context.Context) error {
 	return h.clients.HealthCheck(ctx)
 }
 
-// Placeholder resolver struct - will be replaced when GraphQL is generated
-type Resolver struct {
-	logger       logging.Logger
-	monitor      *monitoring.Monitor
-	authProvider *auth.JWTProvider
-	messageBus   messaging.MessageBus
-	clients      *clients.ServiceClients
-}
-
-// Placeholder config and schema functions
-type Config struct {
-	Resolvers interface{}
-}
-
-func NewExecutableSchema(cfg Config) interface{} {
-	// This will be replaced by gqlgen generated code
-	return nil
-}
-
-// PlaceholderSchema implements graphql.ExecutableSchema for build purposes
-type PlaceholderSchema struct{}
-
-func (s *PlaceholderSchema) Schema() *ast.Schema {
-	return nil
-}
-
-func (s *PlaceholderSchema) Complexity(typeName, field string, childComplexity int, rawArgs map[string]interface{}) (int, bool) {
-	return childComplexity + 1, true
-}
-
-func (s *PlaceholderSchema) Exec(ctx context.Context) graphql.ResponseHandler {
-	return func(ctx context.Context) *graphql.Response {
-		return &graphql.Response{
-			Data: []byte(`{"hello": "world"}`),
-		}
-	}
-}
