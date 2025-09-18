@@ -9,8 +9,6 @@ import (
 	"gorm.io/gorm"
 
 	"reciprocal-clubs-backend/pkg/shared/logging"
-	"reciprocal-clubs-backend/pkg/shared/messaging"
-	"reciprocal-clubs-backend/pkg/shared/monitoring"
 	"reciprocal-clubs-backend/services/governance-service/internal/models"
 )
 
@@ -195,18 +193,7 @@ func (m *mockMonitoring) RecordBusinessEvent(event, value string) {}
 func (m *mockMonitoring) RecordHTTPRequest(method, path string, status int, duration time.Duration) {}
 func (m *mockMonitoring) StartMetricsServer() {}
 
-// Import gorm for the error
-import "gorm.io/gorm"
 
-// Import fmt for string formatting in mock
-import "fmt"
-
-// Import required packages
-import (
-	"reciprocal-clubs-backend/pkg/shared/logging"
-	"reciprocal-clubs-backend/pkg/shared/messaging"
-	"reciprocal-clubs-backend/pkg/shared/monitoring"
-)
 
 func setupTestService() (*Service, *mockRepository) {
 	repo := newMockRepository()

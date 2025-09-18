@@ -423,7 +423,7 @@ func TestHTTPHandler_getAgreement(t *testing.T) {
 }
 
 func TestHTTPHandler_requestVisit(t *testing.T) {
-	handler, service := createTestHandler()
+	handler, _ := createTestHandler()
 
 	t.Run("successful visit request", func(t *testing.T) {
 		requestBody := map[string]interface{}{
@@ -583,7 +583,7 @@ func TestHTTPHandler_checkOutVisit(t *testing.T) {
 }
 
 func TestHTTPHandler_getMemberStats(t *testing.T) {
-	handler, service := createTestHandler()
+	handler, _ := createTestHandler()
 
 	t.Run("successful stats retrieval", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/api/v1/members/123/stats?club_id=456&year=2024&month=3", nil)
