@@ -15,6 +15,7 @@ import (
 	"reciprocal-clubs-backend/services/api-gateway/graph/generated"
 	"reciprocal-clubs-backend/services/api-gateway/internal/clients"
 	"reciprocal-clubs-backend/services/api-gateway/internal/middleware"
+	gatewaymonitoring "reciprocal-clubs-backend/services/api-gateway/internal/monitoring"
 
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/handler/extension"
@@ -23,17 +24,19 @@ import (
 	"github.com/99designs/gqlgen/graphql/playground"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // Server represents the HTTP server
 type Server struct {
-	config       *config.Config
-	logger       logging.Logger
-	monitor      *monitoring.Monitor
-	authProvider *auth.JWTProvider
-	messageBus   messaging.MessageBus
-	clients      *clients.ServiceClients
-	router       *mux.Router
+	config         *config.Config
+	logger         logging.Logger
+	monitor        *monitoring.Monitor
+	authProvider   *auth.JWTProvider
+	messageBus     messaging.MessageBus
+	clients        *clients.ServiceClients
+	router         *mux.Router
+	gatewayMetrics *gatewaymonitoring.APIGatewayMetrics
 }
 
 // NewServer creates a new HTTP server instance
@@ -53,14 +56,18 @@ func NewServer(cfg *config.Config, logger logging.Logger, monitor *monitoring.Mo
 		return nil, fmt.Errorf("failed to create service clients: %w", err)
 	}
 
+	// Initialize gateway metrics
+	gatewayMetrics := gatewaymonitoring.NewAPIGatewayMetrics(logger)
+
 	server := &Server{
-		config:       cfg,
-		logger:       logger,
-		monitor:      monitor,
-		authProvider: authProvider,
-		messageBus:   messageBus,
-		clients:      serviceClients,
-		router:       mux.NewRouter(),
+		config:         cfg,
+		logger:         logger,
+		monitor:        monitor,
+		authProvider:   authProvider,
+		messageBus:     messageBus,
+		clients:        serviceClients,
+		router:         mux.NewRouter(),
+		gatewayMetrics: gatewayMetrics,
 	}
 
 	// Register health checks
@@ -103,18 +110,25 @@ func (s *Server) setupRoutes() {
 	// Health check endpoints
 	s.router.HandleFunc("/health", s.monitor.HealthCheckHandler()).Methods("GET")
 	s.router.HandleFunc("/ready", s.monitor.ReadinessCheckHandler()).Methods("GET")
+	s.router.HandleFunc("/live", s.handleLiveness).Methods("GET")
+
+	// Metrics endpoint
+	s.router.Handle("/metrics", promhttp.Handler()).Methods("GET")
 
 	// GraphQL endpoints
 	s.setupGraphQLRoutes()
 
-	// REST API endpoints  
+	// REST API endpoints
 	s.setupRESTRoutes()
 
-	// Apply middleware
+	// Apply middleware in order (order matters!)
+	s.router.Use(middleware.SecurityHeadersMiddleware())
 	s.router.Use(middleware.RequestIDMiddleware())
-	s.router.Use(middleware.LoggingMiddleware(s.logger))
-	s.router.Use(middleware.MetricsMiddleware(s.monitor))
-	s.router.Use(middleware.RateLimitMiddleware(s.logger))
+	s.router.Use(middleware.RequestSizeLimitMiddleware(10*1024*1024, s.logger)) // 10MB limit
+	s.router.Use(middleware.RequestTimeoutMiddleware(s.logger))
+	s.router.Use(s.createEnhancedLoggingMiddleware())
+	s.router.Use(s.createEnhancedMetricsMiddleware())
+	s.router.Use(s.createAdvancedRateLimitMiddleware())
 }
 
 // setupGraphQLRoutes configures GraphQL endpoints
@@ -316,5 +330,79 @@ func (h *serviceClientsHealthChecker) Name() string {
 
 func (h *serviceClientsHealthChecker) HealthCheck(ctx context.Context) error {
 	return h.clients.HealthCheck(ctx)
+}
+
+// Enhanced middleware creators
+
+func (s *Server) createEnhancedLoggingMiddleware() func(http.Handler) http.Handler {
+	return middleware.LoggingMiddleware(s.logger)
+}
+
+func (s *Server) createEnhancedMetricsMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+
+			// Create response writer wrapper to capture response details
+			wrapped := &enhancedResponseWriter{
+				ResponseWriter: w,
+				statusCode:     http.StatusOK,
+				responseSize:   0,
+			}
+
+			// Execute request
+			next.ServeHTTP(wrapped, r)
+
+			// Record detailed metrics
+			duration := time.Since(start)
+			s.gatewayMetrics.RecordHTTPRequest(
+				r.Method,
+				r.URL.Path,
+				wrapped.statusCode,
+				duration,
+				wrapped.responseSize,
+			)
+
+			// Also record with shared monitor
+			s.monitor.RecordHTTPRequest(r.Method, r.URL.Path, wrapped.statusCode, duration)
+		})
+	}
+}
+
+func (s *Server) createAdvancedRateLimitMiddleware() func(http.Handler) http.Handler {
+	config := middleware.DefaultRateLimitConfig()
+	config.RedisEnabled = false // TODO: Enable Redis in production
+	return middleware.AdvancedRateLimitMiddleware(config, s.logger)
+}
+
+func (s *Server) handleLiveness(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"alive": true, "service": "api-gateway", "timestamp": "` + time.Now().Format(time.RFC3339) + `"}`))
+}
+
+// enhancedResponseWriter captures response size along with status code
+type enhancedResponseWriter struct {
+	http.ResponseWriter
+	statusCode   int
+	responseSize int
+	written      bool
+}
+
+func (rw *enhancedResponseWriter) WriteHeader(statusCode int) {
+	if !rw.written {
+		rw.statusCode = statusCode
+		rw.written = true
+	}
+	rw.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (rw *enhancedResponseWriter) Write(data []byte) (int, error) {
+	if !rw.written {
+		rw.WriteHeader(http.StatusOK)
+	}
+	n, err := rw.ResponseWriter.Write(data)
+	rw.responseSize += n
+	return n, err
 }
 
