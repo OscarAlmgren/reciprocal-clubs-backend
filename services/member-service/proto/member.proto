@@ -1,0 +1,283 @@
+syntax = "proto3";
+
+package reciprocal_clubs.member.v1;
+
+option go_package = "reciprocal-clubs-backend/services/member-service/proto/memberpb";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+// Member service definition
+service MemberService {
+  // Member operations
+  rpc CreateMember(CreateMemberRequest) returns (CreateMemberResponse);
+  rpc GetMember(GetMemberRequest) returns (GetMemberResponse);
+  rpc GetMemberByUserID(GetMemberByUserIDRequest) returns (GetMemberResponse);
+  rpc GetMemberByMemberNumber(GetMemberByMemberNumberRequest) returns (GetMemberResponse);
+  rpc GetMembersByClub(GetMembersByClubRequest) returns (GetMembersByClubResponse);
+  rpc UpdateMemberProfile(UpdateMemberProfileRequest) returns (UpdateMemberProfileResponse);
+  rpc SuspendMember(SuspendMemberRequest) returns (SuspendMemberResponse);
+  rpc ReactivateMember(ReactivateMemberRequest) returns (ReactivateMemberResponse);
+  rpc DeleteMember(DeleteMemberRequest) returns (google.protobuf.Empty);
+
+  // Member validation and status
+  rpc ValidateMemberAccess(ValidateMemberAccessRequest) returns (ValidateMemberAccessResponse);
+  rpc CheckMembershipStatus(CheckMembershipStatusRequest) returns (CheckMembershipStatusResponse);
+
+  // Analytics
+  rpc GetMemberAnalytics(GetMemberAnalyticsRequest) returns (GetMemberAnalyticsResponse);
+
+  // Health check
+  rpc HealthCheck(google.protobuf.Empty) returns (HealthCheckResponse);
+}
+
+// Enums
+enum MembershipType {
+  MEMBERSHIP_TYPE_UNSPECIFIED = 0;
+  MEMBERSHIP_TYPE_REGULAR = 1;
+  MEMBERSHIP_TYPE_VIP = 2;
+  MEMBERSHIP_TYPE_CORPORATE = 3;
+  MEMBERSHIP_TYPE_STUDENT = 4;
+  MEMBERSHIP_TYPE_SENIOR = 5;
+}
+
+enum MemberStatus {
+  MEMBER_STATUS_UNSPECIFIED = 0;
+  MEMBER_STATUS_ACTIVE = 1;
+  MEMBER_STATUS_SUSPENDED = 2;
+  MEMBER_STATUS_EXPIRED = 3;
+  MEMBER_STATUS_PENDING = 4;
+}
+
+// Core types
+message Member {
+  uint32 id = 1;
+  uint32 club_id = 2;
+  uint32 user_id = 3;
+  string member_number = 4;
+  MembershipType membership_type = 5;
+  MemberStatus status = 6;
+  string blockchain_identity = 7;
+  MemberProfile profile = 8;
+  google.protobuf.Timestamp joined_at = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+message MemberProfile {
+  uint32 id = 1;
+  string first_name = 2;
+  string last_name = 3;
+  google.protobuf.Timestamp date_of_birth = 4;
+  string phone_number = 5;
+  Address address = 6;
+  EmergencyContact emergency_contact = 7;
+  MemberPreferences preferences = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message Address {
+  uint32 id = 1;
+  string street = 2;
+  string city = 3;
+  string state = 4;
+  string postal_code = 5;
+  string country = 6;
+}
+
+message EmergencyContact {
+  uint32 id = 1;
+  string name = 2;
+  string relationship = 3;
+  string phone_number = 4;
+  string email = 5;
+}
+
+message MemberPreferences {
+  uint32 id = 1;
+  bool email_notifications = 2;
+  bool sms_notifications = 3;
+  bool push_notifications = 4;
+  bool marketing_emails = 5;
+}
+
+// Request/Response messages
+
+// CreateMember
+message CreateMemberRequest {
+  uint32 club_id = 1;
+  uint32 user_id = 2;
+  MembershipType membership_type = 3;
+  CreateMemberProfileRequest profile = 4;
+}
+
+message CreateMemberProfileRequest {
+  string first_name = 1;
+  string last_name = 2;
+  google.protobuf.Timestamp date_of_birth = 3;
+  string phone_number = 4;
+  CreateAddressRequest address = 5;
+  CreateEmergencyContactRequest emergency_contact = 6;
+  CreatePreferencesRequest preferences = 7;
+}
+
+message CreateAddressRequest {
+  string street = 1;
+  string city = 2;
+  string state = 3;
+  string postal_code = 4;
+  string country = 5;
+}
+
+message CreateEmergencyContactRequest {
+  string name = 1;
+  string relationship = 2;
+  string phone_number = 3;
+  string email = 4;
+}
+
+message CreatePreferencesRequest {
+  bool email_notifications = 1;
+  bool sms_notifications = 2;
+  bool push_notifications = 3;
+  bool marketing_emails = 4;
+}
+
+message CreateMemberResponse {
+  Member member = 1;
+}
+
+// GetMember
+message GetMemberRequest {
+  uint32 member_id = 1;
+}
+
+message GetMemberResponse {
+  Member member = 1;
+}
+
+// GetMemberByUserID
+message GetMemberByUserIDRequest {
+  uint32 user_id = 1;
+}
+
+// GetMemberByMemberNumber
+message GetMemberByMemberNumberRequest {
+  string member_number = 1;
+}
+
+// GetMembersByClub
+message GetMembersByClubRequest {
+  uint32 club_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message GetMembersByClubResponse {
+  repeated Member members = 1;
+  int32 total_count = 2;
+}
+
+// UpdateMemberProfile
+message UpdateMemberProfileRequest {
+  uint32 member_id = 1;
+  UpdateProfileRequest profile = 2;
+}
+
+message UpdateProfileRequest {
+  optional string first_name = 1;
+  optional string last_name = 2;
+  optional google.protobuf.Timestamp date_of_birth = 3;
+  optional string phone_number = 4;
+  optional CreateAddressRequest address = 5;
+  optional CreateEmergencyContactRequest emergency_contact = 6;
+  optional CreatePreferencesRequest preferences = 7;
+}
+
+message UpdateMemberProfileResponse {
+  Member member = 1;
+}
+
+// SuspendMember
+message SuspendMemberRequest {
+  uint32 member_id = 1;
+  string reason = 2;
+}
+
+message SuspendMemberResponse {
+  Member member = 1;
+}
+
+// ReactivateMember
+message ReactivateMemberRequest {
+  uint32 member_id = 1;
+}
+
+message ReactivateMemberResponse {
+  Member member = 1;
+}
+
+// DeleteMember
+message DeleteMemberRequest {
+  uint32 member_id = 1;
+}
+
+// ValidateMemberAccess
+message ValidateMemberAccessRequest {
+  uint32 member_id = 1;
+}
+
+message ValidateMemberAccessResponse {
+  bool can_access = 1;
+}
+
+// CheckMembershipStatus
+message CheckMembershipStatusRequest {
+  uint32 member_id = 1;
+}
+
+message CheckMembershipStatusResponse {
+  MembershipStatusInfo status = 1;
+}
+
+message MembershipStatusInfo {
+  uint32 member_id = 1;
+  MemberStatus status = 2;
+  MembershipType membership_type = 3;
+  bool can_access = 4;
+  google.protobuf.Timestamp joined_at = 5;
+  google.protobuf.Timestamp expires_at = 6;
+}
+
+// GetMemberAnalytics
+message GetMemberAnalyticsRequest {
+  uint32 club_id = 1;
+}
+
+message GetMemberAnalyticsResponse {
+  MemberAnalytics analytics = 1;
+}
+
+message MemberAnalytics {
+  int64 total_members = 1;
+  int64 active_members = 2;
+  int64 new_members_this_month = 3;
+  repeated MembershipTypeCount membership_distribution = 4;
+  repeated MemberStatusCount status_distribution = 5;
+}
+
+message MembershipTypeCount {
+  MembershipType type = 1;
+  int64 count = 2;
+}
+
+message MemberStatusCount {
+  MemberStatus status = 1;
+  int64 count = 2;
+}
+
+// HealthCheck
+message HealthCheckResponse {
+  string status = 1;
+}
