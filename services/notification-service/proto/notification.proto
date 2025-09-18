@@ -1,0 +1,207 @@
+syntax = "proto3";
+
+package notification;
+
+option go_package = "reciprocal-clubs-backend/services/notification-service/proto";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+// NotificationService defines the gRPC service interface
+service NotificationService {
+    // Create a new notification
+    rpc CreateNotification(CreateNotificationRequest) returns (NotificationResponse);
+
+    // Get notification by ID
+    rpc GetNotification(GetNotificationRequest) returns (NotificationResponse);
+
+    // Get notifications for a club
+    rpc GetClubNotifications(GetClubNotificationsRequest) returns (GetNotificationsResponse);
+
+    // Get notifications for a user
+    rpc GetUserNotifications(GetUserNotificationsRequest) returns (GetNotificationsResponse);
+
+    // Mark notification as read
+    rpc MarkAsRead(MarkAsReadRequest) returns (NotificationResponse);
+
+    // Send immediate notification
+    rpc SendImmediate(SendImmediateRequest) returns (SendResponse);
+
+    // Create notification template
+    rpc CreateTemplate(CreateTemplateRequest) returns (TemplateResponse);
+
+    // Get templates for a club
+    rpc GetClubTemplates(GetClubTemplatesRequest) returns (GetTemplatesResponse);
+
+    // Get notification statistics
+    rpc GetStats(GetStatsRequest) returns (StatsResponse);
+
+    // Health check
+    rpc Health(google.protobuf.Empty) returns (HealthResponse);
+}
+
+// Enums
+enum NotificationType {
+    NOTIFICATION_TYPE_UNSPECIFIED = 0;
+    NOTIFICATION_TYPE_EMAIL = 1;
+    NOTIFICATION_TYPE_SMS = 2;
+    NOTIFICATION_TYPE_PUSH = 3;
+    NOTIFICATION_TYPE_IN_APP = 4;
+    NOTIFICATION_TYPE_WEBHOOK = 5;
+}
+
+enum NotificationStatus {
+    NOTIFICATION_STATUS_UNSPECIFIED = 0;
+    NOTIFICATION_STATUS_PENDING = 1;
+    NOTIFICATION_STATUS_SENT = 2;
+    NOTIFICATION_STATUS_DELIVERED = 3;
+    NOTIFICATION_STATUS_READ = 4;
+    NOTIFICATION_STATUS_FAILED = 5;
+}
+
+enum NotificationPriority {
+    NOTIFICATION_PRIORITY_UNSPECIFIED = 0;
+    NOTIFICATION_PRIORITY_LOW = 1;
+    NOTIFICATION_PRIORITY_NORMAL = 2;
+    NOTIFICATION_PRIORITY_HIGH = 3;
+    NOTIFICATION_PRIORITY_URGENT = 4;
+}
+
+// Messages
+message Notification {
+    uint32 id = 1;
+    uint32 club_id = 2;
+    string user_id = 3;
+    NotificationType type = 4;
+    NotificationStatus status = 5;
+    NotificationPriority priority = 6;
+    string title = 7;
+    string message = 8;
+    string recipient = 9;
+    map<string, string> metadata = 10;
+    google.protobuf.Timestamp scheduled_for = 11;
+    google.protobuf.Timestamp sent_at = 12;
+    google.protobuf.Timestamp delivered_at = 13;
+    google.protobuf.Timestamp read_at = 14;
+    google.protobuf.Timestamp failed_at = 15;
+    string failure_reason = 16;
+    uint32 retry_count = 17;
+    google.protobuf.Timestamp created_at = 18;
+    google.protobuf.Timestamp updated_at = 19;
+}
+
+message NotificationTemplate {
+    uint32 id = 1;
+    uint32 club_id = 2;
+    string name = 3;
+    string description = 4;
+    NotificationType type = 5;
+    string subject_template = 6;
+    string body_template = 7;
+    map<string, string> default_metadata = 8;
+    bool is_active = 9;
+    google.protobuf.Timestamp created_at = 10;
+    google.protobuf.Timestamp updated_at = 11;
+}
+
+// Request messages
+message CreateNotificationRequest {
+    uint32 club_id = 1;
+    string user_id = 2;
+    NotificationType type = 3;
+    NotificationPriority priority = 4;
+    string title = 5;
+    string message = 6;
+    string recipient = 7;
+    map<string, string> metadata = 8;
+    google.protobuf.Timestamp scheduled_for = 9;
+}
+
+message GetNotificationRequest {
+    uint32 id = 1;
+}
+
+message GetClubNotificationsRequest {
+    uint32 club_id = 1;
+    uint32 limit = 2;
+    uint32 offset = 3;
+}
+
+message GetUserNotificationsRequest {
+    string user_id = 1;
+    uint32 club_id = 2;
+    uint32 limit = 3;
+    uint32 offset = 4;
+}
+
+message MarkAsReadRequest {
+    uint32 id = 1;
+}
+
+message SendImmediateRequest {
+    uint32 club_id = 1;
+    string user_id = 2;
+    NotificationType type = 3;
+    string title = 4;
+    string message = 5;
+    string recipient = 6;
+    map<string, string> metadata = 7;
+}
+
+message CreateTemplateRequest {
+    uint32 club_id = 1;
+    string name = 2;
+    string description = 3;
+    NotificationType type = 4;
+    string subject_template = 5;
+    string body_template = 6;
+    map<string, string> default_metadata = 7;
+}
+
+message GetClubTemplatesRequest {
+    uint32 club_id = 1;
+}
+
+message GetStatsRequest {
+    uint32 club_id = 1;
+    google.protobuf.Timestamp from_date = 2;
+    google.protobuf.Timestamp to_date = 3;
+}
+
+// Response messages
+message NotificationResponse {
+    Notification notification = 1;
+}
+
+message GetNotificationsResponse {
+    repeated Notification notifications = 1;
+    uint32 total = 2;
+}
+
+message SendResponse {
+    bool success = 1;
+    string message = 2;
+    Notification notification = 3;
+}
+
+message TemplateResponse {
+    NotificationTemplate template = 1;
+}
+
+message GetTemplatesResponse {
+    repeated NotificationTemplate templates = 1;
+}
+
+message StatsResponse {
+    uint32 total = 1;
+    uint32 pending = 2;
+    uint32 sent = 3;
+    uint32 delivered = 4;
+    uint32 failed = 5;
+    uint32 read = 6;
+}
+
+message HealthResponse {
+    string status = 1;
+    string service = 2;
+}
