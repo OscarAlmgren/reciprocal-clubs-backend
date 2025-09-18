@@ -26,6 +26,11 @@ func NewRepository(db *gorm.DB, logger logging.Logger) *Repository {
 	}
 }
 
+// GetDB returns the underlying database connection
+func (r *Repository) GetDB() *gorm.DB {
+	return r.db
+}
+
 // Notification operations
 
 // CreateNotification creates a new notification
