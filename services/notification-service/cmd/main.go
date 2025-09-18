@@ -23,6 +23,7 @@ import (
 	grpcHandlers "reciprocal-clubs-backend/services/notification-service/internal/handlers/grpc"
 	httpHandlers "reciprocal-clubs-backend/services/notification-service/internal/handlers/http"
 	"reciprocal-clubs-backend/services/notification-service/internal/models"
+	"reciprocal-clubs-backend/services/notification-service/internal/providers"
 	"reciprocal-clubs-backend/services/notification-service/internal/repository"
 	"reciprocal-clubs-backend/services/notification-service/internal/service"
 )
@@ -79,8 +80,49 @@ func main() {
 	// Initialize repository
 	repo := repository.NewRepository(db.DB, logger)
 
+	// Initialize providers
+	providersConfig := &providers.ProvidersConfig{
+		Email: &providers.EmailConfig{
+			SMTPHost:     getEnvOrDefault("SMTP_HOST", "localhost"),
+			SMTPPort:     getEnvOrDefault("SMTP_PORT", "587"),
+			SMTPUsername: getEnvOrDefault("SMTP_USERNAME", ""),
+			SMTPPassword: getEnvOrDefault("SMTP_PASSWORD", ""),
+			FromEmail:    getEnvOrDefault("FROM_EMAIL", "noreply@clubland.com"),
+		},
+		SMS: &providers.SMSConfig{
+			AccountSID: getEnvOrDefault("TWILIO_ACCOUNT_SID", ""),
+			AuthToken:  getEnvOrDefault("TWILIO_AUTH_TOKEN", ""),
+			FromNumber: getEnvOrDefault("TWILIO_FROM_NUMBER", ""),
+		},
+		Push: &providers.PushConfig{
+			ServerKey: getEnvOrDefault("FCM_SERVER_KEY", ""),
+			ProjectID: getEnvOrDefault("FCM_PROJECT_ID", ""),
+		},
+		Webhook: &providers.WebhookConfig{
+			SecretKey: getEnvOrDefault("WEBHOOK_SECRET_KEY", ""),
+		},
+	}
+
+	notificationProviders := providers.NewNotificationProviders(providersConfig, logger)
+
+	// Validate provider configurations
+	if err := notificationProviders.ValidateConfig(); err != nil {
+		logger.Warn("Provider configuration validation failed", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
+
+	// Test provider connections (non-fatal)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	if err := notificationProviders.TestConnections(ctx); err != nil {
+		logger.Warn("Provider connection tests failed", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
+	cancel()
+
 	// Initialize service
-	notificationService := service.NewService(repo, logger, messageBus, monitor)
+	notificationService := service.NewService(repo, notificationProviders, logger, messageBus, monitor)
 
 	// Initialize HTTP handlers
 	httpHandler := httpHandlers.NewHTTPHandler(notificationService, logger, monitor)
@@ -139,11 +181,11 @@ func main() {
 	logger.Info("Shutting down servers...", nil)
 
 	// Graceful shutdown
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
 
 	// Shutdown HTTP server
-	if err := httpServer.Shutdown(ctx); err != nil {
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		logger.Error("HTTP server shutdown error", map[string]interface{}{
 			"error": err.Error(),
 		})
@@ -156,4 +198,12 @@ func main() {
 	db.Close()
 
 	logger.Info("Servers stopped", nil)
+}
+
+// getEnvOrDefault returns environment variable value or default if not set
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }
