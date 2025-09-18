@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"reciprocal-clubs-backend/pkg/shared/logging"
 	"reciprocal-clubs-backend/pkg/shared/monitoring"
@@ -33,8 +34,11 @@ func NewHTTPHandler(service *service.NotificationService, logger logging.Logger,
 func (h *HTTPHandler) SetupRoutes() http.Handler {
 	router := mux.NewRouter()
 
-	// Health check
+	// Health and monitoring endpoints
 	router.HandleFunc("/health", h.healthCheck).Methods("GET")
+	router.HandleFunc("/health/live", h.livenessCheck).Methods("GET")
+	router.HandleFunc("/health/ready", h.readinessCheck).Methods("GET")
+	router.Handle("/metrics", promhttp.Handler()).Methods("GET")
 
 	// API routes
 	api := router.PathPrefix("/api/v1").Subrouter()
@@ -60,14 +64,40 @@ func (h *HTTPHandler) SetupRoutes() http.Handler {
 	return router
 }
 
-// Health check endpoint
+// Health check endpoint - comprehensive health check
 func (h *HTTPHandler) healthCheck(w http.ResponseWriter, r *http.Request) {
+	healthChecker := h.service.GetHealthChecker()
+	health := healthChecker.HealthCheck(r.Context())
+
+	// Set appropriate HTTP status based on health
+	statusCode := http.StatusOK
+	switch health.Status {
+	case "unhealthy":
+		statusCode = http.StatusServiceUnavailable
+	case "degraded":
+		statusCode = http.StatusOK // Still accepting requests but with issues
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{
-		"status":  "healthy",
-		"service": "notification-service",
-	})
+	w.WriteHeader(statusCode)
+
+	if err := json.NewEncoder(w).Encode(health); err != nil {
+		h.logger.Error("Failed to encode health check response", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
+}
+
+// Liveness check endpoint - simple check if service is alive
+func (h *HTTPHandler) livenessCheck(w http.ResponseWriter, r *http.Request) {
+	healthChecker := h.service.GetHealthChecker()
+	healthChecker.LivenessHandler()(w, r)
+}
+
+// Readiness check endpoint - check if service is ready to accept traffic
+func (h *HTTPHandler) readinessCheck(w http.ResponseWriter, r *http.Request) {
+	healthChecker := h.service.GetHealthChecker()
+	healthChecker.ReadinessHandler()(w, r)
 }
 
 // Notification handlers
@@ -338,8 +368,30 @@ func (h *HTTPHandler) loggingMiddleware(next http.Handler) http.Handler {
 func (h *HTTPHandler) monitoringMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		next.ServeHTTP(w, r)
+
+		// Wrap response writer to capture status code
+		wrapped := &responseWriter{ResponseWriter: w, statusCode: 200}
+
+		next.ServeHTTP(wrapped, r)
+
 		duration := time.Since(start)
-		h.monitoring.RecordHTTPRequest(r.Method, r.URL.Path, 200, duration)
+
+		// Record metrics using our custom notification metrics
+		metrics := h.service.GetMetrics()
+		metrics.RecordHTTPRequest(r.Method, r.URL.Path, wrapped.statusCode, duration)
+
+		// Also record with the shared monitoring for compatibility
+		h.monitoring.RecordHTTPRequest(r.Method, r.URL.Path, wrapped.statusCode, duration)
 	})
+}
+
+// responseWriter wraps http.ResponseWriter to capture status code
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
 }
