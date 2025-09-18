@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	google.golang.org/grpc v1.75.1
-	gorm.io/gorm v1.25.5
+	gorm.io/gorm v1.30.0
 	reciprocal-clubs-backend/pkg/shared/config v0.0.0
 	reciprocal-clubs-backend/pkg/shared/database v0.0.0
 	reciprocal-clubs-backend/pkg/shared/logging v0.0.0
@@ -27,6 +27,7 @@ require (
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/matttproud/golang_protobuf_extensions/v2 v2.0.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/nats-io/nats.go v1.31.0 // indirect
@@ -58,6 +59,7 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/driver/postgres v1.5.4 // indirect
+	gorm.io/driver/sqlite v1.6.0 // indirect
 )
 
 replace reciprocal-clubs-backend/pkg/shared/auth => ../../pkg/shared/auth

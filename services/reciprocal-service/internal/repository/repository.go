@@ -350,3 +350,85 @@ func (r *Repository) UpdateVisitRestriction(ctx context.Context, restriction *mo
 
 	return nil
 }
+
+// GetAgreementsByStatus retrieves agreements by status
+func (r *Repository) GetAgreementsByStatus(ctx context.Context, status models.AgreementStatus, limit, offset int) ([]models.Agreement, error) {
+	var agreements []models.Agreement
+	query := r.db.WithContext(ctx).Where("status = ?", status)
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	if offset > 0 {
+		query = query.Offset(offset)
+	}
+
+	if err := query.Order("created_at DESC").Find(&agreements).Error; err != nil {
+		r.logger.Error("Failed to get agreements by status", map[string]interface{}{
+			"error":  err.Error(),
+			"status": status,
+		})
+		return nil, err
+	}
+
+	return agreements, nil
+}
+
+// GetVisitsByStatus retrieves visits by status
+func (r *Repository) GetVisitsByStatus(ctx context.Context, status models.VisitStatus, limit, offset int) ([]models.Visit, error) {
+	var visits []models.Visit
+	query := r.db.WithContext(ctx).Where("status = ?", status)
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	if offset > 0 {
+		query = query.Offset(offset)
+	}
+
+	if err := query.Order("visit_date DESC").Find(&visits).Error; err != nil {
+		r.logger.Error("Failed to get visits by status", map[string]interface{}{
+			"error":  err.Error(),
+			"status": status,
+		})
+		return nil, err
+	}
+
+	return visits, nil
+}
+
+// GetUpcomingVisits retrieves upcoming visits for a club
+func (r *Repository) GetUpcomingVisits(ctx context.Context, clubID uint, days int) ([]models.Visit, error) {
+	var visits []models.Visit
+	startDate := time.Now()
+	endDate := startDate.AddDate(0, 0, days)
+
+	if err := r.db.WithContext(ctx).
+		Where("visiting_club_id = ?", clubID).
+		Where("visit_date BETWEEN ? AND ?", startDate, endDate).
+		Where("status IN ?", []models.VisitStatus{models.VisitStatusConfirmed, models.VisitStatusPending}).
+		Order("visit_date ASC").
+		Find(&visits).Error; err != nil {
+		r.logger.Error("Failed to get upcoming visits", map[string]interface{}{
+			"error":   err.Error(),
+			"club_id": clubID,
+			"days":    days,
+		})
+		return nil, err
+	}
+
+	return visits, nil
+}
+
+// HealthCheck performs a health check on the repository
+func (r *Repository) HealthCheck(ctx context.Context) error {
+	var result int
+	if err := r.db.WithContext(ctx).Raw("SELECT 1").Scan(&result).Error; err != nil {
+		r.logger.Error("Repository health check failed", map[string]interface{}{
+			"error": err.Error(),
+		})
+		return err
+	}
+
+	return nil
+}

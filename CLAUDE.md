@@ -193,6 +193,15 @@ Key shared packages in `pkg/shared/`:
 - Supports channels, chaincodes, endorsement, and event processing
 - No longer uses mock implementation - production-ready
 
+### Reciprocal Service
+- Complete reciprocal agreements and visit management system
+- Full agreement lifecycle (pending → approved → active)
+- Complete visit workflow (request → confirm → check-in → check-out)
+- Comprehensive business logic with proper validation and restrictions
+- QR code generation for visit verification
+- Complete test coverage (models, service, repository, handlers)
+- Production-ready with both HTTP and gRPC interfaces
+
 ## Build and Deployment
 
 ### Container Images
