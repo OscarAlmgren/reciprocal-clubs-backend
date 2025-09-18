@@ -28,7 +28,7 @@ The Reciprocal Clubs Backend is a comprehensive microservices-based system built
 |---------|---------|---------|------------------|
 | **API Gateway** | 🟡 Partial | GraphQL/REST entry point, authentication | Go, gqlgen, GraphQL |
 | **Auth Service** | 🟡 Partial | Multi-tenant authentication, RBAC | Go, JWT, bcrypt |
-| **Member Service** | 🟢 Complete | Member CRUD, profiles, lifecycle | Go, gRPC, PostgreSQL |
+| **Member Service** | 🔴 Planned | Member CRUD, profiles, lifecycle | Go, gRPC, PostgreSQL |
 | **Reciprocal Service** | 🟢 Complete | Cross-club agreements, visit verification | Go, gRPC, Blockchain |
 | **Blockchain Service** | 🟢 Complete | Hyperledger Fabric integration | Go, Fabric SDK |
 | **Notification Service** | 🟢 Complete | Multi-channel notifications | Go, Templates, SMTP/SMS |
@@ -342,7 +342,7 @@ spec:
 ```
      ▲
     /E2E\     <- End-to-End (Real workflows)
-   /─────\    <- Integration (Service boundaries)  
+   /─────\    <- Integration (Service boundaries)
   /───────\   <- Unit Tests (Business logic)
  /_________\
 ```
