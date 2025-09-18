@@ -39,12 +39,29 @@ func (h *HTTPHandler) SetupRoutes() http.Handler {
 	// API routes
 	api := router.PathPrefix("/api/v1").Subrouter()
 
-	// Example routes - replace with actual governance routes
-	api.HandleFunc("/examples", h.createExample).Methods("POST")
-	api.HandleFunc("/examples", h.listExamples).Methods("GET")
-	api.HandleFunc("/examples/{id}", h.getExample).Methods("GET")
-	api.HandleFunc("/examples/{id}", h.updateExample).Methods("PUT")
-	api.HandleFunc("/examples/{id}", h.deleteExample).Methods("DELETE")
+	// Proposal routes
+	api.HandleFunc("/proposals", h.createProposal).Methods("POST")
+	api.HandleFunc("/proposals", h.listProposals).Methods("GET")
+	api.HandleFunc("/proposals/{id}", h.getProposal).Methods("GET")
+	api.HandleFunc("/proposals/{id}/activate", h.activateProposal).Methods("POST")
+	api.HandleFunc("/proposals/{id}/finalize", h.finalizeProposal).Methods("POST")
+
+	// Vote routes
+	api.HandleFunc("/proposals/{id}/votes", h.castVote).Methods("POST")
+	api.HandleFunc("/proposals/{id}/votes", h.getVotesByProposal).Methods("GET")
+	api.HandleFunc("/proposals/{id}/results", h.getVoteResults).Methods("GET")
+
+	// Voting rights routes
+	api.HandleFunc("/voting-rights", h.createVotingRights).Methods("POST")
+	api.HandleFunc("/members/{member_id}/voting-rights/{club_id}", h.getVotingRights).Methods("GET")
+
+	// Governance policy routes
+	api.HandleFunc("/policies", h.createGovernancePolicy).Methods("POST")
+	api.HandleFunc("/clubs/{club_id}/policies", h.getActiveGovernancePolicies).Methods("GET")
+
+	// Club-specific routes
+	api.HandleFunc("/clubs/{club_id}/proposals", h.getProposalsByClub).Methods("GET")
+	api.HandleFunc("/clubs/{club_id}/proposals/active", h.getActiveProposals).Methods("GET")
 
 	// Add middleware
 	router.Use(h.loggingMiddleware)
@@ -63,28 +80,28 @@ func (h *HTTPHandler) healthCheck(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Example handlers - replace with actual governance handlers
+// Proposal handlers
 
-func (h *HTTPHandler) createExample(w http.ResponseWriter, r *http.Request) {
-	var req service.CreateExampleRequest
+func (h *HTTPHandler) createProposal(w http.ResponseWriter, r *http.Request) {
+	var req service.CreateProposalRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	example, err := h.service.CreateExample(r.Context(), &req)
+	proposal, err := h.service.CreateProposal(r.Context(), &req)
 	if err != nil {
-		h.logger.Error("Failed to create example", map[string]interface{}{
+		h.logger.Error("Failed to create proposal", map[string]interface{}{
 			"error": err.Error(),
 		})
-		h.writeError(w, http.StatusInternalServerError, "Failed to create example")
+		h.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	h.writeJSON(w, http.StatusCreated, example)
+	h.writeJSON(w, http.StatusCreated, proposal)
 }
 
-func (h *HTTPHandler) getExample(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) getProposal(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.ParseUint(vars["id"], 10, 32)
 	if err != nil {
@@ -92,20 +109,20 @@ func (h *HTTPHandler) getExample(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	example, err := h.service.GetExample(r.Context(), uint(id))
+	proposal, err := h.service.GetProposal(r.Context(), uint(id))
 	if err != nil {
-		h.logger.Error("Failed to get example", map[string]interface{}{
+		h.logger.Error("Failed to get proposal", map[string]interface{}{
 			"error": err.Error(),
 			"id":    id,
 		})
-		h.writeError(w, http.StatusNotFound, "Example not found")
+		h.writeError(w, http.StatusNotFound, "Proposal not found")
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, example)
+	h.writeJSON(w, http.StatusOK, proposal)
 }
 
-func (h *HTTPHandler) updateExample(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) activateProposal(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.ParseUint(vars["id"], 10, 32)
 	if err != nil {
@@ -113,26 +130,28 @@ func (h *HTTPHandler) updateExample(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req service.UpdateExampleRequest
+	var req struct {
+		ActivatorID uint `json:"activator_id"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	example, err := h.service.UpdateExample(r.Context(), uint(id), &req)
+	proposal, err := h.service.ActivateProposal(r.Context(), uint(id), req.ActivatorID)
 	if err != nil {
-		h.logger.Error("Failed to update example", map[string]interface{}{
+		h.logger.Error("Failed to activate proposal", map[string]interface{}{
 			"error": err.Error(),
 			"id":    id,
 		})
-		h.writeError(w, http.StatusInternalServerError, "Failed to update example")
+		h.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, example)
+	h.writeJSON(w, http.StatusOK, proposal)
 }
 
-func (h *HTTPHandler) deleteExample(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) finalizeProposal(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.ParseUint(vars["id"], 10, 32)
 	if err != nil {
@@ -140,29 +159,242 @@ func (h *HTTPHandler) deleteExample(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.DeleteExample(r.Context(), uint(id)); err != nil {
-		h.logger.Error("Failed to delete example", map[string]interface{}{
+	proposal, err := h.service.FinalizeProposal(r.Context(), uint(id))
+	if err != nil {
+		h.logger.Error("Failed to finalize proposal", map[string]interface{}{
 			"error": err.Error(),
 			"id":    id,
 		})
-		h.writeError(w, http.StatusInternalServerError, "Failed to delete example")
+		h.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	h.writeJSON(w, http.StatusOK, proposal)
 }
 
-func (h *HTTPHandler) listExamples(w http.ResponseWriter, r *http.Request) {
-	examples, err := h.service.ListExamples(r.Context())
-	if err != nil {
-		h.logger.Error("Failed to list examples", map[string]interface{}{
-			"error": err.Error(),
-		})
-		h.writeError(w, http.StatusInternalServerError, "Failed to list examples")
+func (h *HTTPHandler) listProposals(w http.ResponseWriter, r *http.Request) {
+	clubIDStr := r.URL.Query().Get("club_id")
+	if clubIDStr == "" {
+		h.writeError(w, http.StatusBadRequest, "club_id parameter is required")
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, examples)
+	clubID, err := strconv.ParseUint(clubIDStr, 10, 32)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid club_id")
+		return
+	}
+
+	proposals, err := h.service.GetProposalsByClub(r.Context(), uint(clubID))
+	if err != nil {
+		h.logger.Error("Failed to list proposals", map[string]interface{}{
+			"error":   err.Error(),
+			"club_id": clubID,
+		})
+		h.writeError(w, http.StatusInternalServerError, "Failed to list proposals")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, proposals)
+}
+
+func (h *HTTPHandler) getProposalsByClub(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	clubID, err := strconv.ParseUint(vars["club_id"], 10, 32)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid club ID")
+		return
+	}
+
+	proposals, err := h.service.GetProposalsByClub(r.Context(), uint(clubID))
+	if err != nil {
+		h.logger.Error("Failed to get proposals by club", map[string]interface{}{
+			"error":   err.Error(),
+			"club_id": clubID,
+		})
+		h.writeError(w, http.StatusInternalServerError, "Failed to get proposals")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, proposals)
+}
+
+func (h *HTTPHandler) getActiveProposals(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	clubID, err := strconv.ParseUint(vars["club_id"], 10, 32)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid club ID")
+		return
+	}
+
+	proposals, err := h.service.GetActiveProposals(r.Context(), uint(clubID))
+	if err != nil {
+		h.logger.Error("Failed to get active proposals", map[string]interface{}{
+			"error":   err.Error(),
+			"club_id": clubID,
+		})
+		h.writeError(w, http.StatusInternalServerError, "Failed to get active proposals")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, proposals)
+}
+
+// Vote handlers
+
+func (h *HTTPHandler) castVote(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	proposalID, err := strconv.ParseUint(vars["id"], 10, 32)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid proposal ID")
+		return
+	}
+
+	var req service.CastVoteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Ensure proposal ID matches URL parameter
+	req.ProposalID = uint(proposalID)
+
+	vote, err := h.service.CastVote(r.Context(), &req)
+	if err != nil {
+		h.logger.Error("Failed to cast vote", map[string]interface{}{
+			"error":       err.Error(),
+			"proposal_id": proposalID,
+		})
+		h.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	h.writeJSON(w, http.StatusCreated, vote)
+}
+
+func (h *HTTPHandler) getVotesByProposal(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	proposalID, err := strconv.ParseUint(vars["id"], 10, 32)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid proposal ID")
+		return
+	}
+
+	// This would need to be implemented in the service layer
+	// For now, return placeholder
+	h.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"proposal_id": proposalID,
+		"votes":       []interface{}{},
+		"message":     "Vote listing not yet implemented",
+	})
+}
+
+func (h *HTTPHandler) getVoteResults(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	proposalID, err := strconv.ParseUint(vars["id"], 10, 32)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid proposal ID")
+		return
+	}
+
+	// This would need to be implemented in the service layer
+	// For now, return placeholder
+	h.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"proposal_id": proposalID,
+		"results":     map[string]interface{}{},
+		"message":     "Vote results not yet implemented",
+	})
+}
+
+// Voting rights handlers
+
+func (h *HTTPHandler) createVotingRights(w http.ResponseWriter, r *http.Request) {
+	var req service.CreateVotingRightsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	votingRights, err := h.service.CreateVotingRights(r.Context(), &req)
+	if err != nil {
+		h.logger.Error("Failed to create voting rights", map[string]interface{}{
+			"error": err.Error(),
+		})
+		h.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.writeJSON(w, http.StatusCreated, votingRights)
+}
+
+func (h *HTTPHandler) getVotingRights(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	memberID, err := strconv.ParseUint(vars["member_id"], 10, 32)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid member ID")
+		return
+	}
+
+	clubID, err := strconv.ParseUint(vars["club_id"], 10, 32)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid club ID")
+		return
+	}
+
+	votingRights, err := h.service.GetVotingRights(r.Context(), uint(memberID), uint(clubID))
+	if err != nil {
+		h.logger.Error("Failed to get voting rights", map[string]interface{}{
+			"error":     err.Error(),
+			"member_id": memberID,
+			"club_id":   clubID,
+		})
+		h.writeError(w, http.StatusNotFound, "Voting rights not found")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, votingRights)
+}
+
+// Governance policy handlers
+
+func (h *HTTPHandler) createGovernancePolicy(w http.ResponseWriter, r *http.Request) {
+	var req service.CreateGovernancePolicyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	policy, err := h.service.CreateGovernancePolicy(r.Context(), &req)
+	if err != nil {
+		h.logger.Error("Failed to create governance policy", map[string]interface{}{
+			"error": err.Error(),
+		})
+		h.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.writeJSON(w, http.StatusCreated, policy)
+}
+
+func (h *HTTPHandler) getActiveGovernancePolicies(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	clubID, err := strconv.ParseUint(vars["club_id"], 10, 32)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid club ID")
+		return
+	}
+
+	policies, err := h.service.GetActiveGovernancePolicies(r.Context(), uint(clubID))
+	if err != nil {
+		h.logger.Error("Failed to get active governance policies", map[string]interface{}{
+			"error":   err.Error(),
+			"club_id": clubID,
+		})
+		h.writeError(w, http.StatusInternalServerError, "Failed to get governance policies")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, policies)
 }
 
 // Utility methods

@@ -51,7 +51,12 @@ func main() {
 
 	// Auto-migrate database schema
 	if err := db.Migrate(
-		&models.Example{},
+		&models.Proposal{},
+		&models.Vote{},
+		&models.VotingPeriod{},
+		&models.VotingRights{},
+		&models.GovernancePolicy{},
+		&models.VoteResult{},
 	); err != nil {
 		logger.Fatal("Failed to migrate database", map[string]interface{}{
 			"error": err.Error(),
