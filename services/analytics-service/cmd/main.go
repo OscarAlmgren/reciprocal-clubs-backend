@@ -22,6 +22,7 @@ import (
 
 	grpcHandlers "reciprocal-clubs-backend/services/analytics-service/internal/handlers/grpc"
 	httpHandlers "reciprocal-clubs-backend/services/analytics-service/internal/handlers/http"
+	"reciprocal-clubs-backend/services/analytics-service/internal/integrations"
 	"reciprocal-clubs-backend/services/analytics-service/internal/models"
 	"reciprocal-clubs-backend/services/analytics-service/internal/repository"
 	"reciprocal-clubs-backend/services/analytics-service/internal/service"
@@ -70,8 +71,59 @@ func main() {
 	// Initialize repository
 	repo := repository.NewRepository(db.DB, logger)
 
+	// Initialize integrations
+	integrationsConfig := &integrations.IntegrationsConfig{
+		ElasticSearch: &integrations.ElasticSearchConfig{
+			URL:      getEnvOrDefault("ELASTICSEARCH_URL", ""),
+			Username: getEnvOrDefault("ELASTICSEARCH_USERNAME", ""),
+			Password: getEnvOrDefault("ELASTICSEARCH_PASSWORD", ""),
+			Index:    getEnvOrDefault("ELASTICSEARCH_INDEX", "analytics"),
+		},
+		DataDog: &integrations.DataDogConfig{
+			APIKey:    getEnvOrDefault("DATADOG_API_KEY", ""),
+			AppKey:    getEnvOrDefault("DATADOG_APP_KEY", ""),
+			Site:      getEnvOrDefault("DATADOG_SITE", "datadoghq.com"),
+			Namespace: getEnvOrDefault("DATADOG_NAMESPACE", "analytics"),
+		},
+		Grafana: &integrations.GrafanaConfig{
+			URL:    getEnvOrDefault("GRAFANA_URL", ""),
+			APIKey: getEnvOrDefault("GRAFANA_API_KEY", ""),
+			OrgID:  1,
+		},
+		BigQuery: &integrations.BigQueryConfig{
+			ProjectID:       getEnvOrDefault("BIGQUERY_PROJECT_ID", ""),
+			DatasetID:       getEnvOrDefault("BIGQUERY_DATASET_ID", "analytics"),
+			CredentialsPath: getEnvOrDefault("BIGQUERY_CREDENTIALS_PATH", ""),
+		},
+		S3: &integrations.S3Config{
+			Region:     getEnvOrDefault("AWS_REGION", "us-east-1"),
+			Bucket:     getEnvOrDefault("S3_BUCKET", ""),
+			AccessKey:  getEnvOrDefault("AWS_ACCESS_KEY_ID", ""),
+			SecretKey:  getEnvOrDefault("AWS_SECRET_ACCESS_KEY", ""),
+			PathPrefix: getEnvOrDefault("S3_PATH_PREFIX", "analytics"),
+		},
+	}
+
+	analyticsIntegrations := integrations.NewAnalyticsIntegrations(integrationsConfig, logger)
+
+	// Validate integrations configuration
+	if err := analyticsIntegrations.ValidateConfig(); err != nil {
+		logger.Warn("Integrations configuration validation failed", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
+
+	// Test integrations connections (non-fatal)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	if err := analyticsIntegrations.TestConnections(ctx); err != nil {
+		logger.Warn("Integrations connection tests failed", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
+	cancel()
+
 	// Initialize service
-	analyticsService := service.NewService(repo, logger, natsClient, monitoringService)
+	analyticsService := service.NewService(repo, logger, natsClient, monitoringService, analyticsIntegrations)
 
 	// Start event processor
 	if err := analyticsService.StartEventProcessor(); err != nil {
@@ -131,10 +183,10 @@ func main() {
 	}
 
 	// Graceful shutdown
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
 
-	if err := httpServer.Shutdown(ctx); err != nil {
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		logger.Error("HTTP server shutdown error", map[string]interface{}{"error": err.Error()})
 	}
 
@@ -145,4 +197,12 @@ func main() {
 	}
 
 	logger.Info("Servers stopped", map[string]interface{}{})
+}
+
+// getEnvOrDefault returns environment variable value or default if not set
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }

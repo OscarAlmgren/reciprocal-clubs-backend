@@ -19,6 +19,11 @@ type Repository interface {
 	GetMetricsByClub(clubID string, timeRange TimeRange) ([]*AnalyticsMetric, error)
 	GetReportsByClub(clubID string, reportType string) ([]*AnalyticsReport, error)
 	AggregateMetrics(clubID string, timeRange TimeRange) (map[string]interface{}, error)
+	CreateReport(report *AnalyticsReport) error
+	RecordMetric(metric *AnalyticsMetric) error
+	GetEventsByClub(clubID string, timeRange TimeRange) ([]*AnalyticsEvent, error)
+	GetRealtimeMetrics(clubID string) (map[string]interface{}, error)
+	CleanupOldEvents(olderThan time.Time) error
 
 	// Example operations (replace with actual models)
 	CreateExample(example *models.Example) error
@@ -84,6 +89,11 @@ func NewRepository(db *gorm.DB, logger logging.Logger) Repository {
 		db:     db,
 		logger: logger,
 	}
+}
+
+// GetDB returns the underlying GORM database connection
+func (r *repository) GetDB() *gorm.DB {
+	return r.db
 }
 
 func (r *repository) IsHealthy() bool {
@@ -176,6 +186,121 @@ func (r *repository) AggregateMetrics(clubID string, timeRange TimeRange) (map[s
 	}
 
 	return aggregation, nil
+}
+
+func (r *repository) CreateReport(report *AnalyticsReport) error {
+	if err := r.db.Create(report).Error; err != nil {
+		r.logger.Error("Failed to create analytics report", map[string]interface{}{"error": err.Error()})
+		return fmt.Errorf("failed to create report: %w", err)
+	}
+
+	r.logger.Info("Created analytics report", map[string]interface{}{"report_type": report.ReportType, "club_id": report.ClubID})
+	return nil
+}
+
+func (r *repository) RecordMetric(metric *AnalyticsMetric) error {
+	if metric.Timestamp.IsZero() {
+		metric.Timestamp = time.Now()
+	}
+
+	if err := r.db.Create(metric).Error; err != nil {
+		r.logger.Error("Failed to record analytics metric", map[string]interface{}{"error": err.Error()})
+		return fmt.Errorf("failed to record metric: %w", err)
+	}
+
+	r.logger.Info("Recorded analytics metric", map[string]interface{}{"metric_name": metric.MetricName, "club_id": metric.ClubID})
+	return nil
+}
+
+func (r *repository) GetEventsByClub(clubID string, timeRange TimeRange) ([]*AnalyticsEvent, error) {
+	var events []*AnalyticsEvent
+
+	query := r.db.Where("club_id = ?", clubID)
+	if !timeRange.Start.IsZero() {
+		query = query.Where("timestamp >= ?", timeRange.Start)
+	}
+	if !timeRange.End.IsZero() {
+		query = query.Where("timestamp <= ?", timeRange.End)
+	}
+
+	if err := query.Order("timestamp DESC").Find(&events).Error; err != nil {
+		r.logger.Error("Failed to get events", map[string]interface{}{"error": err.Error()})
+		return nil, fmt.Errorf("failed to get events: %w", err)
+	}
+
+	return events, nil
+}
+
+func (r *repository) GetRealtimeMetrics(clubID string) (map[string]interface{}, error) {
+	// Get metrics from the last 5 minutes
+	fiveMinutesAgo := time.Now().Add(-5 * time.Minute)
+
+	var recentEvents int64
+	var recentMetrics int64
+
+	// Count recent events
+	if err := r.db.Model(&AnalyticsEvent{}).
+		Where("club_id = ? AND timestamp >= ?", clubID, fiveMinutesAgo).
+		Count(&recentEvents).Error; err != nil {
+		return nil, fmt.Errorf("failed to count recent events: %w", err)
+	}
+
+	// Count recent metrics
+	if err := r.db.Model(&AnalyticsMetric{}).
+		Where("club_id = ? AND timestamp >= ?", clubID, fiveMinutesAgo).
+		Count(&recentMetrics).Error; err != nil {
+		return nil, fmt.Errorf("failed to count recent metrics: %w", err)
+	}
+
+	// Get average metric values for common metrics
+	var avgMetrics []struct {
+		MetricName string  `json:"metric_name"`
+		AvgValue   float64 `json:"avg_value"`
+	}
+
+	if err := r.db.Model(&AnalyticsMetric{}).
+		Select("metric_name, AVG(metric_value) as avg_value").
+		Where("club_id = ? AND timestamp >= ?", clubID, fiveMinutesAgo).
+		Group("metric_name").
+		Scan(&avgMetrics).Error; err != nil {
+		return nil, fmt.Errorf("failed to get average metrics: %w", err)
+	}
+
+	metrics := map[string]interface{}{
+		"recent_events":     recentEvents,
+		"recent_metrics":    recentMetrics,
+		"average_metrics":   avgMetrics,
+		"timestamp":         time.Now(),
+		"time_window":       "5 minutes",
+	}
+
+	return metrics, nil
+}
+
+func (r *repository) CleanupOldEvents(olderThan time.Time) error {
+	// Delete events older than the specified time
+	result := r.db.Where("timestamp < ?", olderThan).Delete(&AnalyticsEvent{})
+	if result.Error != nil {
+		r.logger.Error("Failed to cleanup old events", map[string]interface{}{"error": result.Error.Error()})
+		return fmt.Errorf("failed to cleanup old events: %w", result.Error)
+	}
+
+	if result.RowsAffected > 0 {
+		r.logger.Info("Cleaned up old events", map[string]interface{}{"rows_deleted": result.RowsAffected, "older_than": olderThan})
+	}
+
+	// Also cleanup old metrics
+	result = r.db.Where("timestamp < ?", olderThan).Delete(&AnalyticsMetric{})
+	if result.Error != nil {
+		r.logger.Error("Failed to cleanup old metrics", map[string]interface{}{"error": result.Error.Error()})
+		return fmt.Errorf("failed to cleanup old metrics: %w", result.Error)
+	}
+
+	if result.RowsAffected > 0 {
+		r.logger.Info("Cleaned up old metrics", map[string]interface{}{"rows_deleted": result.RowsAffected, "older_than": olderThan})
+	}
+
+	return nil
 }
 
 // Example operations (replace with actual business logic)
