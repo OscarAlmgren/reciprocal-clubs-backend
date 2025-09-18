@@ -42,10 +42,23 @@ func (h *GRPCHandler) RegisterServices(server *grpc.Server) {
 
 // Health returns service health status
 func (h *GRPCHandler) Health(ctx context.Context, req *emptypb.Empty) (*pb.HealthResponse, error) {
-	h.monitoring.RecordBusinessEvent("grpc_health_check", "notification")
+	// Get the health checker and perform actual health check
+	healthChecker := h.service.GetHealthChecker()
+	health := healthChecker.HealthCheck(ctx)
+
+	status := "SERVING"
+	if health.Status == "unhealthy" {
+		status = "NOT_SERVING"
+	} else if health.Status == "degraded" {
+		status = "SERVICE_UNKNOWN"
+	}
+
+	// Record gRPC metrics
+	metrics := h.service.GetMetrics()
+	metrics.RecordGRPCRequest("Health", "OK", 0) // Duration will be calculated by middleware
 
 	return &pb.HealthResponse{
-		Status:  "SERVING",
+		Status:  status,
 		Service: "notification-service",
 	}, nil
 }
@@ -231,7 +244,7 @@ func (h *GRPCHandler) SendImmediate(ctx context.Context, req *pb.SendImmediateRe
 	}
 
 	// Process immediately
-	// Note: ProcessNotification is unexported, so we skip this for now
+	go h.service.ProcessNotification(ctx, notification.ID)
 
 	return &pb.SendResponse{
 		Success:      true,
