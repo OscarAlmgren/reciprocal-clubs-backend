@@ -91,12 +91,12 @@ Once the services are running, verify the installation:
 curl http://localhost:8080/health
 
 # Check API endpoints
-curl http://localhost:8081/api/v1/health  # Member Service
-curl http://localhost:8082/api/v1/health  # Reciprocal Service
-curl http://localhost:8083/api/v1/health  # Blockchain Service
-curl http://localhost:8084/api/v1/health  # Notification Service
-curl http://localhost:8085/api/v1/health  # Analytics Service
-curl http://localhost:8086/api/v1/health  # Governance Service
+curl http://localhost:8081/health  # Member Service
+curl http://localhost:8082/health  # Reciprocal Service
+curl http://localhost:8083/health  # Blockchain Service
+curl http://localhost:8084/health  # Notification Service
+curl http://localhost:8085/health  # Analytics Service
+curl http://localhost:8086/health  # Governance Service
 ```
 
 ### 4. Access the Platform
@@ -644,13 +644,16 @@ Use the provided Postman collection or curl examples:
 
 ```bash
 # Test member creation
-curl -X POST http://localhost:8081/api/v1/members \
+curl -X POST http://localhost:8081/members \
   -H "Content-Type: application/json" \
   -d '{
-    "auth_user_id": "user123",
-    "first_name": "John",
-    "last_name": "Doe",
-    "email": "john.doe@example.com"
+    "club_id": 1,
+    "user_id": 123,
+    "membership_type": "REGULAR",
+    "profile": {
+      "first_name": "John",
+      "last_name": "Doe"
+    }
   }'
 
 # Test reciprocal agreement
