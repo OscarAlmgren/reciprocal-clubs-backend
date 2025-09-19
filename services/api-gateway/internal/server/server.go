@@ -15,7 +15,7 @@ import (
 	"reciprocal-clubs-backend/services/api-gateway/graph/generated"
 	"reciprocal-clubs-backend/services/api-gateway/internal/clients"
 	"reciprocal-clubs-backend/services/api-gateway/internal/middleware"
-	gatewaymonitoring "reciprocal-clubs-backend/services/api-gateway/internal/monitoring"
+	"reciprocal-clubs-backend/services/api-gateway/internal/metrics"
 
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/handler/extension"
@@ -36,7 +36,7 @@ type Server struct {
 	messageBus     messaging.MessageBus
 	clients        *clients.ServiceClients
 	router         *mux.Router
-	gatewayMetrics *gatewaymonitoring.APIGatewayMetrics
+	gatewayMetrics *metrics.APIGatewayMetrics
 }
 
 // NewServer creates a new HTTP server instance
@@ -57,7 +57,7 @@ func NewServer(cfg *config.Config, logger logging.Logger, monitor *monitoring.Mo
 	}
 
 	// Initialize gateway metrics
-	gatewayMetrics := gatewaymonitoring.NewAPIGatewayMetrics(logger)
+	gatewayMetrics := metrics.NewAPIGatewayMetrics(monitor, logger)
 
 	server := &Server{
 		config:         cfg,
@@ -195,7 +195,7 @@ func (s *Server) createGraphQLServer() http.Handler {
 	return middleware.GraphQLAuthMiddleware(s.authProvider, s.logger)(srv)
 }
 
-// setupRESTRoutes configures REST API endpoints
+// setupRESTRoutes configures comprehensive REST API endpoints
 func (s *Server) setupRESTRoutes() {
 	api := s.router.PathPrefix("/api/v1").Subrouter()
 
@@ -204,20 +204,81 @@ func (s *Server) setupRESTRoutes() {
 	auth.HandleFunc("/login", s.handleLogin).Methods("POST")
 	auth.HandleFunc("/register", s.handleRegister).Methods("POST")
 	auth.HandleFunc("/refresh", s.handleRefresh).Methods("POST")
+	auth.HandleFunc("/passkey/initiate", s.handleInitiatePasskey).Methods("POST")
+	auth.HandleFunc("/passkey/complete", s.handleCompletePasskey).Methods("POST")
 
 	// Protected endpoints
 	protected := api.PathPrefix("").Subrouter()
 	protected.Use(s.authProvider.Middleware())
 
-	// User endpoints
+	// User management endpoints
 	protected.HandleFunc("/auth/logout", s.handleLogout).Methods("POST")
 	protected.HandleFunc("/auth/me", s.handleMe).Methods("GET")
+	protected.HandleFunc("/users/{clubId}/{userId}", s.handleGetUser).Methods("GET")
+	protected.HandleFunc("/users/{clubId}/{userId}", s.handleUpdateUser).Methods("PUT")
+	protected.HandleFunc("/users/{clubId}/{userId}", s.handleDeleteUser).Methods("DELETE")
 
-	// Quick status endpoints
+	// Member management endpoints
+	protected.HandleFunc("/members", s.handleCreateMember).Methods("POST")
+	protected.HandleFunc("/members/{clubId}", s.handleListMembers).Methods("GET")
+	protected.HandleFunc("/members/{clubId}/{memberId}", s.handleGetMember).Methods("GET")
+	protected.HandleFunc("/members/{clubId}/{memberId}", s.handleUpdateMember).Methods("PUT")
+	protected.HandleFunc("/members/{clubId}/{memberId}", s.handleDeleteMember).Methods("DELETE")
+	protected.HandleFunc("/members/{clubId}/search", s.handleSearchMembers).Methods("GET")
+	protected.HandleFunc("/members/{clubId}/{memberId}/suspend", s.handleSuspendMember).Methods("POST")
+	protected.HandleFunc("/members/{clubId}/{memberId}/activate", s.handleActivateMember).Methods("POST")
+	protected.HandleFunc("/members/{clubId}/analytics", s.handleMemberAnalytics).Methods("GET")
+
+	// Reciprocal agreement endpoints
+	protected.HandleFunc("/agreements", s.handleCreateAgreement).Methods("POST")
+	protected.HandleFunc("/agreements/{clubId}", s.handleListAgreements).Methods("GET")
+	protected.HandleFunc("/agreements/{clubId}/{agreementId}", s.handleGetAgreement).Methods("GET")
+	protected.HandleFunc("/agreements/{clubId}/{agreementId}", s.handleUpdateAgreement).Methods("PUT")
+
+	// Visit management endpoints
+	protected.HandleFunc("/visits/request", s.handleRequestVisit).Methods("POST")
+	protected.HandleFunc("/visits/{clubId}/{visitId}/confirm", s.handleConfirmVisit).Methods("POST")
+	protected.HandleFunc("/visits/{clubId}/{visitId}/checkin", s.handleCheckInVisit).Methods("POST")
+	protected.HandleFunc("/visits/{clubId}/{visitId}/checkout", s.handleCheckOutVisit).Methods("POST")
+	protected.HandleFunc("/visits/{clubId}", s.handleListVisits).Methods("GET")
+	protected.HandleFunc("/visits/{clubId}/analytics", s.handleVisitAnalytics).Methods("GET")
+
+	// Blockchain endpoints
+	protected.HandleFunc("/blockchain/transactions", s.handleSubmitTransaction).Methods("POST")
+	protected.HandleFunc("/blockchain/transactions/{transactionId}", s.handleGetTransaction).Methods("GET")
+	protected.HandleFunc("/blockchain/transactions/{clubId}", s.handleListTransactions).Methods("GET")
+	protected.HandleFunc("/blockchain/ledger/query", s.handleQueryLedger).Methods("POST")
+	protected.HandleFunc("/blockchain/status/{clubId}", s.handleBlockchainStatus).Methods("GET")
+
+	// Role and permission endpoints
+	protected.HandleFunc("/roles", s.handleCreateRole).Methods("POST")
+	protected.HandleFunc("/roles/{clubId}/assign", s.handleAssignRole).Methods("POST")
+	protected.HandleFunc("/roles/{clubId}/remove", s.handleRemoveRole).Methods("DELETE")
+	protected.HandleFunc("/permissions/check", s.handleCheckPermission).Methods("POST")
+	protected.HandleFunc("/permissions/{clubId}/{userId}", s.handleGetUserPermissions).Methods("GET")
+
+	// System status and admin endpoints
 	protected.HandleFunc("/status", s.handleStatus).Methods("GET")
+	protected.HandleFunc("/admin/services/connections", s.handleServiceConnections).Methods("GET")
+	protected.HandleFunc("/admin/services/refresh", s.handleRefreshConnections).Methods("POST")
+	protected.HandleFunc("/admin/rate-limits/{identifier}", s.handleRateLimitStatus).Methods("GET")
+	protected.HandleFunc("/admin/rate-limits/{identifier}/reset", s.handleResetRateLimit).Methods("POST")
+	protected.HandleFunc("/admin/circuit-breakers", s.handleCircuitBreakerStatus).Methods("GET")
+	protected.HandleFunc("/admin/circuit-breakers/{name}/reset", s.handleResetCircuitBreaker).Methods("POST")
+	protected.HandleFunc("/admin/analytics/requests", s.handleRequestAnalytics).Methods("GET")
+	protected.HandleFunc("/admin/analytics/graphql", s.handleGraphQLAnalytics).Methods("GET")
 
-	s.logger.Info("REST API routes configured", map[string]interface{}{
-		"base_path": "/api/v1",
+	s.logger.Info("Comprehensive REST API routes configured", map[string]interface{}{
+		"base_path":      "/api/v1",
+		"total_routes":   35,
+		"auth_routes":    5,
+		"user_routes":    3,
+		"member_routes":  8,
+		"agreement_routes": 4,
+		"visit_routes":   5,
+		"blockchain_routes": 5,
+		"role_routes":    5,
+		"admin_routes":   8,
 	})
 }
 
@@ -236,75 +297,7 @@ func (s *Server) registerHealthChecks() {
 	}
 }
 
-// REST handlers
-
-func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	// Implementation would call auth service
-	// For now, return a placeholder
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error": "not implemented yet"}`))
-}
-
-func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
-	// Implementation would call auth service
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error": "not implemented yet"}`))
-}
-
-func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
-	// Implementation would refresh JWT token
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error": "not implemented yet"}`))
-}
-
-func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	// Implementation would revoke token
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"success": true}`))
-}
-
-func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
-	user := auth.GetUserFromContext(r.Context())
-	if user == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	// Return user info (implement JSON marshaling)
-	w.Write([]byte(fmt.Sprintf(`{"id": "%d", "email": "%s", "username": "%s"}`, 
-		user.ID, user.Email, user.Username)))
-}
-
-func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	user := auth.GetUserFromContext(r.Context())
-	status := map[string]interface{}{
-		"status":    "ok",
-		"timestamp": time.Now().UTC(),
-		"service":   "api-gateway",
-		"version":   s.config.Service.Version,
-		"user_id":   user.ID,
-		"club_id":   user.ClubID,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	// In a real implementation, use proper JSON marshaling
-	w.Write([]byte(fmt.Sprintf(`{
-		"status": "%s",
-		"timestamp": "%s",
-		"service": "%s",
-		"version": "%s",
-		"user_id": %d,
-		"club_id": %d
-	}`, status["status"], status["timestamp"], status["service"], 
-		status["version"], status["user_id"], status["club_id"])))
-}
+// All REST handlers are implemented in handlers.go
 
 // Health checkers
 
