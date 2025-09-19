@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"reciprocal-clubs-backend/pkg/shared/config"
+	"reciprocal-clubs-backend/pkg/shared/logging"
 	"reciprocal-clubs-backend/pkg/shared/messaging"
 	"reciprocal-clubs-backend/services/auth-service/internal/hanko"
 )
@@ -58,6 +59,16 @@ func (m *MockLogger) Fatal(msg string, fields map[string]interface{}) {
 	defer m.mu.Unlock()
 	m.logs = append(m.logs, LogEntry{Level: "fatal", Message: msg, Fields: fields})
 	panic("Fatal log called")
+}
+
+func (m *MockLogger) With(fields map[string]interface{}) logging.Logger {
+	// Return a new logger with fields (simplified for testing)
+	return m
+}
+
+func (m *MockLogger) WithContext(ctx context.Context) logging.Logger {
+	// Return a new logger with context (simplified for testing)
+	return m
 }
 
 func (m *MockLogger) GetLogs() []LogEntry {
@@ -130,7 +141,7 @@ type MockMessageBus struct {
 
 type Message struct {
 	Subject string
-	Data    []byte
+	Data    interface{}
 }
 
 func NewMockMessageBus() *MockMessageBus {
@@ -139,19 +150,35 @@ func NewMockMessageBus() *MockMessageBus {
 	}
 }
 
-func (m *MockMessageBus) Publish(ctx context.Context, subject string, data []byte) error {
+func (m *MockMessageBus) Publish(ctx context.Context, subject string, data interface{}) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.messages = append(m.messages, Message{Subject: subject, Data: data})
 	return nil
 }
 
-func (m *MockMessageBus) Subscribe(ctx context.Context, subject string, handler messaging.MessageHandler) error {
+func (m *MockMessageBus) PublishSync(ctx context.Context, subject string, data interface{}) error {
+	return m.Publish(ctx, subject, data)
+}
+
+func (m *MockMessageBus) SubscribeQueue(subject, queue string, handler messaging.MessageHandler) error {
+	return nil
+}
+
+func (m *MockMessageBus) Request(ctx context.Context, subject string, data interface{}, response interface{}) error {
+	return nil
+}
+
+func (m *MockMessageBus) Subscribe(subject string, handler messaging.MessageHandler) error {
 	// For tests, we don't need to actually subscribe
 	return nil
 }
 
 func (m *MockMessageBus) Close() error {
+	return nil
+}
+
+func (m *MockMessageBus) HealthCheck(ctx context.Context) error {
 	return nil
 }
 
