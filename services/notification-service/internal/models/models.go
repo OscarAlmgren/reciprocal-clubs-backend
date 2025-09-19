@@ -97,8 +97,30 @@ type NotificationPreference struct {
 	UpdatedAt       time.Time        `json:"updated_at"`
 }
 
+// UserPreferences represents comprehensive user notification preferences
+type UserPreferences struct {
+	ID               uint       `json:"id" gorm:"primaryKey"`
+	ClubID           uint       `json:"club_id" gorm:"not null;index"`
+	UserID           string     `json:"user_id" gorm:"size:255;not null;index"`
+	EmailEnabled     bool       `json:"email_enabled" gorm:"default:true"`
+	SMSEnabled       bool       `json:"sms_enabled" gorm:"default:true"`
+	PushEnabled      bool       `json:"push_enabled" gorm:"default:true"`
+	InAppEnabled     bool       `json:"in_app_enabled" gorm:"default:true"`
+	BlockedTypes     string     `json:"blocked_types,omitempty" gorm:"type:json"`
+	Timezone         string     `json:"timezone" gorm:"size:50;default:'UTC'"`
+	PreferredLang    string     `json:"preferred_lang" gorm:"size:10;default:'en'"`
+	QuietHoursStart  *time.Time `json:"quiet_hours_start,omitempty"`
+	QuietHoursEnd    *time.Time `json:"quiet_hours_end,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+}
+
 func (NotificationPreference) TableName() string {
 	return "notification_preferences"
+}
+
+func (UserPreferences) TableName() string {
+	return "user_preferences"
 }
 
 // IsScheduled checks if the notification is scheduled for future delivery

@@ -57,6 +57,22 @@ func (h *HTTPHandler) SetupRoutes() http.Handler {
 	// Stats routes
 	api.HandleFunc("/clubs/{clubId}/stats", h.getNotificationStats).Methods("GET")
 
+	// Admin routes for monitoring and management
+	admin := api.PathPrefix("/admin").Subrouter()
+	admin.HandleFunc("/process/pending", h.processPendingNotifications).Methods("POST")
+	admin.HandleFunc("/process/failed", h.retryFailedNotifications).Methods("POST")
+	admin.HandleFunc("/notifications/bulk", h.markMultipleAsRead).Methods("POST")
+	admin.HandleFunc("/templates/{id}", h.updateTemplate).Methods("PUT")
+	admin.HandleFunc("/templates/{id}", h.deleteTemplate).Methods("DELETE")
+
+	// User preferences routes
+	api.HandleFunc("/users/{userId}/preferences", h.getUserPreferences).Methods("GET")
+	api.HandleFunc("/users/{userId}/preferences", h.updateUserPreferences).Methods("PUT")
+
+	// Bulk operations
+	api.HandleFunc("/notifications/bulk", h.createBulkNotifications).Methods("POST")
+	api.HandleFunc("/notifications/send", h.sendImmediate).Methods("POST")
+
 	// Add middleware
 	router.Use(h.loggingMiddleware)
 	router.Use(h.monitoringMiddleware)
@@ -394,4 +410,232 @@ type responseWriter struct {
 func (rw *responseWriter) WriteHeader(code int) {
 	rw.statusCode = code
 	rw.ResponseWriter.WriteHeader(code)
+}
+
+// Admin handlers
+
+func (h *HTTPHandler) processPendingNotifications(w http.ResponseWriter, r *http.Request) {
+	count := h.service.ProcessScheduledNotifications(r.Context())
+
+	h.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"processed_count": count,
+		"status":          "success",
+	})
+}
+
+func (h *HTTPHandler) retryFailedNotifications(w http.ResponseWriter, r *http.Request) {
+	count := h.service.RetryFailedNotificationsWithCount(r.Context())
+
+	h.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"retried_count": count,
+		"status":        "success",
+	})
+}
+
+func (h *HTTPHandler) markMultipleAsRead(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		NotificationIDs []uint `json:"notification_ids"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if len(req.NotificationIDs) == 0 {
+		h.writeError(w, http.StatusBadRequest, "notification_ids cannot be empty")
+		return
+	}
+
+	// For now, mark them one by one (could be optimized with bulk repository method)
+	successCount := 0
+	var failedIDs []uint
+
+	for _, id := range req.NotificationIDs {
+		_, err := h.service.MarkNotificationAsRead(r.Context(), id)
+		if err != nil {
+			failedIDs = append(failedIDs, id)
+			h.logger.Warn("Failed to mark notification as read", map[string]interface{}{
+				"id":    id,
+				"error": err.Error(),
+			})
+		} else {
+			successCount++
+		}
+	}
+
+	h.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success_count": successCount,
+		"failed_ids":    failedIDs,
+	})
+}
+
+func (h *HTTPHandler) updateTemplate(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.ParseUint(vars["id"], 10, 32)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid template ID")
+		return
+	}
+
+	var updates map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// For simplicity, this is a placeholder - would need proper update logic
+	h.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"id":      id,
+		"message": "Template update not fully implemented yet",
+		"updates": updates,
+	})
+}
+
+func (h *HTTPHandler) deleteTemplate(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.ParseUint(vars["id"], 10, 32)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid template ID")
+		return
+	}
+
+	// For simplicity, this is a placeholder - would need proper delete logic
+	h.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"id":      id,
+		"message": "Template deletion not fully implemented yet",
+	})
+}
+
+// User preferences handlers
+
+func (h *HTTPHandler) getUserPreferences(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	userID := vars["userId"]
+
+	clubIDStr := r.URL.Query().Get("club_id")
+	if clubIDStr == "" {
+		h.writeError(w, http.StatusBadRequest, "club_id query parameter is required")
+		return
+	}
+
+	clubID, err := strconv.ParseUint(clubIDStr, 10, 32)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid club ID")
+		return
+	}
+
+	// This would call a service method that doesn't exist yet
+	h.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"user_id":         userID,
+		"club_id":         clubID,
+		"email_enabled":   true,
+		"sms_enabled":     true,
+		"push_enabled":    true,
+		"in_app_enabled":  true,
+		"timezone":        "UTC",
+		"preferred_lang":  "en",
+		"message":         "User preferences endpoint - implementation pending",
+	})
+}
+
+func (h *HTTPHandler) updateUserPreferences(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	userID := vars["userId"]
+
+	clubIDStr := r.URL.Query().Get("club_id")
+	if clubIDStr == "" {
+		h.writeError(w, http.StatusBadRequest, "club_id query parameter is required")
+		return
+	}
+
+	clubID, err := strconv.ParseUint(clubIDStr, 10, 32)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid club ID")
+		return
+	}
+
+	var prefs map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&prefs); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// This would call a service method that doesn't exist yet
+	h.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"user_id":     userID,
+		"club_id":     clubID,
+		"preferences": prefs,
+		"message":     "User preferences update endpoint - implementation pending",
+	})
+}
+
+// Bulk operations handlers
+
+func (h *HTTPHandler) createBulkNotifications(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Notifications []service.CreateNotificationRequest `json:"notifications"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if len(req.Notifications) == 0 {
+		h.writeError(w, http.StatusBadRequest, "notifications cannot be empty")
+		return
+	}
+
+	var results []interface{}
+	successCount := 0
+	errorCount := 0
+
+	for _, notificationReq := range req.Notifications {
+		notification, err := h.service.CreateNotification(r.Context(), &notificationReq)
+		if err != nil {
+			results = append(results, map[string]interface{}{
+				"error": err.Error(),
+			})
+			errorCount++
+		} else {
+			results = append(results, notification)
+			successCount++
+		}
+	}
+
+	h.writeJSON(w, http.StatusCreated, map[string]interface{}{
+		"results":       results,
+		"success_count": successCount,
+		"error_count":   errorCount,
+	})
+}
+
+func (h *HTTPHandler) sendImmediate(w http.ResponseWriter, r *http.Request) {
+	var req service.CreateNotificationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Set high priority for immediate sending
+	req.Priority = "critical"
+
+	notification, err := h.service.CreateNotification(r.Context(), &req)
+	if err != nil {
+		h.logger.Error("Failed to create immediate notification", map[string]interface{}{
+			"error": err.Error(),
+		})
+		h.writeError(w, http.StatusInternalServerError, "Failed to create notification")
+		return
+	}
+
+	// Process immediately
+	go h.service.ProcessNotification(r.Context(), notification.ID)
+
+	h.writeJSON(w, http.StatusCreated, map[string]interface{}{
+		"success":      true,
+		"message":      "Notification sent immediately",
+		"notification": notification,
+	})
 }

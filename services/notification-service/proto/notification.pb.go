@@ -1502,6 +1502,823 @@ func (x *HealthResponse) GetService() string {
 	return ""
 }
 
+// Additional request messages
+type ProcessNotificationsResponse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	ProcessedCount int32                  `protobuf:"varint,1,opt,name=processed_count,json=processedCount,proto3" json:"processed_count,omitempty"`
+	Status         string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ProcessNotificationsResponse) Reset() {
+	*x = ProcessNotificationsResponse{}
+	mi := &file_proto_notification_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProcessNotificationsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProcessNotificationsResponse) ProtoMessage() {}
+
+func (x *ProcessNotificationsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_notification_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProcessNotificationsResponse.ProtoReflect.Descriptor instead.
+func (*ProcessNotificationsResponse) Descriptor() ([]byte, []int) {
+	return file_proto_notification_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ProcessNotificationsResponse) GetProcessedCount() int32 {
+	if x != nil {
+		return x.ProcessedCount
+	}
+	return 0
+}
+
+func (x *ProcessNotificationsResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+type MetricsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Counters      map[string]int64       `protobuf:"bytes,1,rep,name=counters,proto3" json:"counters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	Gauges        map[string]float64     `protobuf:"bytes,2,rep,name=gauges,proto3" json:"gauges,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"fixed64,2,opt,name=value"`
+	Histograms    map[string]float64     `protobuf:"bytes,3,rep,name=histograms,proto3" json:"histograms,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"fixed64,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MetricsResponse) Reset() {
+	*x = MetricsResponse{}
+	mi := &file_proto_notification_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MetricsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MetricsResponse) ProtoMessage() {}
+
+func (x *MetricsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_notification_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MetricsResponse.ProtoReflect.Descriptor instead.
+func (*MetricsResponse) Descriptor() ([]byte, []int) {
+	return file_proto_notification_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *MetricsResponse) GetCounters() map[string]int64 {
+	if x != nil {
+		return x.Counters
+	}
+	return nil
+}
+
+func (x *MetricsResponse) GetGauges() map[string]float64 {
+	if x != nil {
+		return x.Gauges
+	}
+	return nil
+}
+
+func (x *MetricsResponse) GetHistograms() map[string]float64 {
+	if x != nil {
+		return x.Histograms
+	}
+	return nil
+}
+
+type CreateBulkNotificationsRequest struct {
+	state         protoimpl.MessageState       `protogen:"open.v1"`
+	Notifications []*CreateNotificationRequest `protobuf:"bytes,1,rep,name=notifications,proto3" json:"notifications,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateBulkNotificationsRequest) Reset() {
+	*x = CreateBulkNotificationsRequest{}
+	mi := &file_proto_notification_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateBulkNotificationsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateBulkNotificationsRequest) ProtoMessage() {}
+
+func (x *CreateBulkNotificationsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_notification_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateBulkNotificationsRequest.ProtoReflect.Descriptor instead.
+func (*CreateBulkNotificationsRequest) Descriptor() ([]byte, []int) {
+	return file_proto_notification_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *CreateBulkNotificationsRequest) GetNotifications() []*CreateNotificationRequest {
+	if x != nil {
+		return x.Notifications
+	}
+	return nil
+}
+
+type CreateBulkNotificationsResponse struct {
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	Results       []*NotificationResponse `protobuf:"bytes,1,rep,name=results,proto3" json:"results,omitempty"`
+	SuccessCount  int32                   `protobuf:"varint,2,opt,name=success_count,json=successCount,proto3" json:"success_count,omitempty"`
+	ErrorCount    int32                   `protobuf:"varint,3,opt,name=error_count,json=errorCount,proto3" json:"error_count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateBulkNotificationsResponse) Reset() {
+	*x = CreateBulkNotificationsResponse{}
+	mi := &file_proto_notification_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateBulkNotificationsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateBulkNotificationsResponse) ProtoMessage() {}
+
+func (x *CreateBulkNotificationsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_notification_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateBulkNotificationsResponse.ProtoReflect.Descriptor instead.
+func (*CreateBulkNotificationsResponse) Descriptor() ([]byte, []int) {
+	return file_proto_notification_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *CreateBulkNotificationsResponse) GetResults() []*NotificationResponse {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
+func (x *CreateBulkNotificationsResponse) GetSuccessCount() int32 {
+	if x != nil {
+		return x.SuccessCount
+	}
+	return 0
+}
+
+func (x *CreateBulkNotificationsResponse) GetErrorCount() int32 {
+	if x != nil {
+		return x.ErrorCount
+	}
+	return 0
+}
+
+type MarkMultipleAsReadRequest struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	NotificationIds []uint32               `protobuf:"varint,1,rep,packed,name=notification_ids,json=notificationIds,proto3" json:"notification_ids,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *MarkMultipleAsReadRequest) Reset() {
+	*x = MarkMultipleAsReadRequest{}
+	mi := &file_proto_notification_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MarkMultipleAsReadRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MarkMultipleAsReadRequest) ProtoMessage() {}
+
+func (x *MarkMultipleAsReadRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_notification_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MarkMultipleAsReadRequest.ProtoReflect.Descriptor instead.
+func (*MarkMultipleAsReadRequest) Descriptor() ([]byte, []int) {
+	return file_proto_notification_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *MarkMultipleAsReadRequest) GetNotificationIds() []uint32 {
+	if x != nil {
+		return x.NotificationIds
+	}
+	return nil
+}
+
+type MarkMultipleAsReadResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UpdatedCount  int32                  `protobuf:"varint,1,opt,name=updated_count,json=updatedCount,proto3" json:"updated_count,omitempty"`
+	FailedIds     []uint32               `protobuf:"varint,2,rep,packed,name=failed_ids,json=failedIds,proto3" json:"failed_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MarkMultipleAsReadResponse) Reset() {
+	*x = MarkMultipleAsReadResponse{}
+	mi := &file_proto_notification_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MarkMultipleAsReadResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MarkMultipleAsReadResponse) ProtoMessage() {}
+
+func (x *MarkMultipleAsReadResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_notification_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MarkMultipleAsReadResponse.ProtoReflect.Descriptor instead.
+func (*MarkMultipleAsReadResponse) Descriptor() ([]byte, []int) {
+	return file_proto_notification_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *MarkMultipleAsReadResponse) GetUpdatedCount() int32 {
+	if x != nil {
+		return x.UpdatedCount
+	}
+	return 0
+}
+
+func (x *MarkMultipleAsReadResponse) GetFailedIds() []uint32 {
+	if x != nil {
+		return x.FailedIds
+	}
+	return nil
+}
+
+type UpdateTemplateRequest struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Id              uint32                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name            string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Description     string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	SubjectTemplate string                 `protobuf:"bytes,4,opt,name=subject_template,json=subjectTemplate,proto3" json:"subject_template,omitempty"`
+	BodyTemplate    string                 `protobuf:"bytes,5,opt,name=body_template,json=bodyTemplate,proto3" json:"body_template,omitempty"`
+	DefaultMetadata map[string]string      `protobuf:"bytes,6,rep,name=default_metadata,json=defaultMetadata,proto3" json:"default_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	IsActive        bool                   `protobuf:"varint,7,opt,name=is_active,json=isActive,proto3" json:"is_active,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *UpdateTemplateRequest) Reset() {
+	*x = UpdateTemplateRequest{}
+	mi := &file_proto_notification_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateTemplateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateTemplateRequest) ProtoMessage() {}
+
+func (x *UpdateTemplateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_notification_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateTemplateRequest.ProtoReflect.Descriptor instead.
+func (*UpdateTemplateRequest) Descriptor() ([]byte, []int) {
+	return file_proto_notification_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *UpdateTemplateRequest) GetId() uint32 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *UpdateTemplateRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *UpdateTemplateRequest) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *UpdateTemplateRequest) GetSubjectTemplate() string {
+	if x != nil {
+		return x.SubjectTemplate
+	}
+	return ""
+}
+
+func (x *UpdateTemplateRequest) GetBodyTemplate() string {
+	if x != nil {
+		return x.BodyTemplate
+	}
+	return ""
+}
+
+func (x *UpdateTemplateRequest) GetDefaultMetadata() map[string]string {
+	if x != nil {
+		return x.DefaultMetadata
+	}
+	return nil
+}
+
+func (x *UpdateTemplateRequest) GetIsActive() bool {
+	if x != nil {
+		return x.IsActive
+	}
+	return false
+}
+
+type DeleteTemplateRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            uint32                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteTemplateRequest) Reset() {
+	*x = DeleteTemplateRequest{}
+	mi := &file_proto_notification_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteTemplateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteTemplateRequest) ProtoMessage() {}
+
+func (x *DeleteTemplateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_notification_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteTemplateRequest.ProtoReflect.Descriptor instead.
+func (*DeleteTemplateRequest) Descriptor() ([]byte, []int) {
+	return file_proto_notification_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *DeleteTemplateRequest) GetId() uint32 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+type UserPreferences struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Id                uint32                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	ClubId            uint32                 `protobuf:"varint,2,opt,name=club_id,json=clubId,proto3" json:"club_id,omitempty"`
+	UserId            string                 `protobuf:"bytes,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	EmailEnabled      bool                   `protobuf:"varint,4,opt,name=email_enabled,json=emailEnabled,proto3" json:"email_enabled,omitempty"`
+	SmsEnabled        bool                   `protobuf:"varint,5,opt,name=sms_enabled,json=smsEnabled,proto3" json:"sms_enabled,omitempty"`
+	PushEnabled       bool                   `protobuf:"varint,6,opt,name=push_enabled,json=pushEnabled,proto3" json:"push_enabled,omitempty"`
+	InAppEnabled      bool                   `protobuf:"varint,7,opt,name=in_app_enabled,json=inAppEnabled,proto3" json:"in_app_enabled,omitempty"`
+	BlockedTypes      []string               `protobuf:"bytes,8,rep,name=blocked_types,json=blockedTypes,proto3" json:"blocked_types,omitempty"`
+	Timezone          string                 `protobuf:"bytes,9,opt,name=timezone,proto3" json:"timezone,omitempty"`
+	PreferredLanguage string                 `protobuf:"bytes,10,opt,name=preferred_language,json=preferredLanguage,proto3" json:"preferred_language,omitempty"`
+	QuietHoursStart   *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=quiet_hours_start,json=quietHoursStart,proto3" json:"quiet_hours_start,omitempty"`
+	QuietHoursEnd     *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=quiet_hours_end,json=quietHoursEnd,proto3" json:"quiet_hours_end,omitempty"`
+	CreatedAt         *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt         *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *UserPreferences) Reset() {
+	*x = UserPreferences{}
+	mi := &file_proto_notification_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UserPreferences) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UserPreferences) ProtoMessage() {}
+
+func (x *UserPreferences) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_notification_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UserPreferences.ProtoReflect.Descriptor instead.
+func (*UserPreferences) Descriptor() ([]byte, []int) {
+	return file_proto_notification_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *UserPreferences) GetId() uint32 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *UserPreferences) GetClubId() uint32 {
+	if x != nil {
+		return x.ClubId
+	}
+	return 0
+}
+
+func (x *UserPreferences) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *UserPreferences) GetEmailEnabled() bool {
+	if x != nil {
+		return x.EmailEnabled
+	}
+	return false
+}
+
+func (x *UserPreferences) GetSmsEnabled() bool {
+	if x != nil {
+		return x.SmsEnabled
+	}
+	return false
+}
+
+func (x *UserPreferences) GetPushEnabled() bool {
+	if x != nil {
+		return x.PushEnabled
+	}
+	return false
+}
+
+func (x *UserPreferences) GetInAppEnabled() bool {
+	if x != nil {
+		return x.InAppEnabled
+	}
+	return false
+}
+
+func (x *UserPreferences) GetBlockedTypes() []string {
+	if x != nil {
+		return x.BlockedTypes
+	}
+	return nil
+}
+
+func (x *UserPreferences) GetTimezone() string {
+	if x != nil {
+		return x.Timezone
+	}
+	return ""
+}
+
+func (x *UserPreferences) GetPreferredLanguage() string {
+	if x != nil {
+		return x.PreferredLanguage
+	}
+	return ""
+}
+
+func (x *UserPreferences) GetQuietHoursStart() *timestamppb.Timestamp {
+	if x != nil {
+		return x.QuietHoursStart
+	}
+	return nil
+}
+
+func (x *UserPreferences) GetQuietHoursEnd() *timestamppb.Timestamp {
+	if x != nil {
+		return x.QuietHoursEnd
+	}
+	return nil
+}
+
+func (x *UserPreferences) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *UserPreferences) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+type GetUserPreferencesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	ClubId        uint32                 `protobuf:"varint,2,opt,name=club_id,json=clubId,proto3" json:"club_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetUserPreferencesRequest) Reset() {
+	*x = GetUserPreferencesRequest{}
+	mi := &file_proto_notification_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetUserPreferencesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetUserPreferencesRequest) ProtoMessage() {}
+
+func (x *GetUserPreferencesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_notification_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetUserPreferencesRequest.ProtoReflect.Descriptor instead.
+func (*GetUserPreferencesRequest) Descriptor() ([]byte, []int) {
+	return file_proto_notification_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *GetUserPreferencesRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *GetUserPreferencesRequest) GetClubId() uint32 {
+	if x != nil {
+		return x.ClubId
+	}
+	return 0
+}
+
+type UserPreferencesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Preferences   *UserPreferences       `protobuf:"bytes,1,opt,name=preferences,proto3" json:"preferences,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UserPreferencesResponse) Reset() {
+	*x = UserPreferencesResponse{}
+	mi := &file_proto_notification_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UserPreferencesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UserPreferencesResponse) ProtoMessage() {}
+
+func (x *UserPreferencesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_notification_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UserPreferencesResponse.ProtoReflect.Descriptor instead.
+func (*UserPreferencesResponse) Descriptor() ([]byte, []int) {
+	return file_proto_notification_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *UserPreferencesResponse) GetPreferences() *UserPreferences {
+	if x != nil {
+		return x.Preferences
+	}
+	return nil
+}
+
+type UpdateUserPreferencesRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	UserId            string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	ClubId            uint32                 `protobuf:"varint,2,opt,name=club_id,json=clubId,proto3" json:"club_id,omitempty"`
+	EmailEnabled      bool                   `protobuf:"varint,3,opt,name=email_enabled,json=emailEnabled,proto3" json:"email_enabled,omitempty"`
+	SmsEnabled        bool                   `protobuf:"varint,4,opt,name=sms_enabled,json=smsEnabled,proto3" json:"sms_enabled,omitempty"`
+	PushEnabled       bool                   `protobuf:"varint,5,opt,name=push_enabled,json=pushEnabled,proto3" json:"push_enabled,omitempty"`
+	InAppEnabled      bool                   `protobuf:"varint,6,opt,name=in_app_enabled,json=inAppEnabled,proto3" json:"in_app_enabled,omitempty"`
+	BlockedTypes      []string               `protobuf:"bytes,7,rep,name=blocked_types,json=blockedTypes,proto3" json:"blocked_types,omitempty"`
+	Timezone          string                 `protobuf:"bytes,8,opt,name=timezone,proto3" json:"timezone,omitempty"`
+	PreferredLanguage string                 `protobuf:"bytes,9,opt,name=preferred_language,json=preferredLanguage,proto3" json:"preferred_language,omitempty"`
+	QuietHoursStart   *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=quiet_hours_start,json=quietHoursStart,proto3" json:"quiet_hours_start,omitempty"`
+	QuietHoursEnd     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=quiet_hours_end,json=quietHoursEnd,proto3" json:"quiet_hours_end,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *UpdateUserPreferencesRequest) Reset() {
+	*x = UpdateUserPreferencesRequest{}
+	mi := &file_proto_notification_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateUserPreferencesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateUserPreferencesRequest) ProtoMessage() {}
+
+func (x *UpdateUserPreferencesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_notification_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateUserPreferencesRequest.ProtoReflect.Descriptor instead.
+func (*UpdateUserPreferencesRequest) Descriptor() ([]byte, []int) {
+	return file_proto_notification_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *UpdateUserPreferencesRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *UpdateUserPreferencesRequest) GetClubId() uint32 {
+	if x != nil {
+		return x.ClubId
+	}
+	return 0
+}
+
+func (x *UpdateUserPreferencesRequest) GetEmailEnabled() bool {
+	if x != nil {
+		return x.EmailEnabled
+	}
+	return false
+}
+
+func (x *UpdateUserPreferencesRequest) GetSmsEnabled() bool {
+	if x != nil {
+		return x.SmsEnabled
+	}
+	return false
+}
+
+func (x *UpdateUserPreferencesRequest) GetPushEnabled() bool {
+	if x != nil {
+		return x.PushEnabled
+	}
+	return false
+}
+
+func (x *UpdateUserPreferencesRequest) GetInAppEnabled() bool {
+	if x != nil {
+		return x.InAppEnabled
+	}
+	return false
+}
+
+func (x *UpdateUserPreferencesRequest) GetBlockedTypes() []string {
+	if x != nil {
+		return x.BlockedTypes
+	}
+	return nil
+}
+
+func (x *UpdateUserPreferencesRequest) GetTimezone() string {
+	if x != nil {
+		return x.Timezone
+	}
+	return ""
+}
+
+func (x *UpdateUserPreferencesRequest) GetPreferredLanguage() string {
+	if x != nil {
+		return x.PreferredLanguage
+	}
+	return ""
+}
+
+func (x *UpdateUserPreferencesRequest) GetQuietHoursStart() *timestamppb.Timestamp {
+	if x != nil {
+		return x.QuietHoursStart
+	}
+	return nil
+}
+
+func (x *UpdateUserPreferencesRequest) GetQuietHoursEnd() *timestamppb.Timestamp {
+	if x != nil {
+		return x.QuietHoursEnd
+	}
+	return nil
+}
+
 var File_proto_notification_proto protoreflect.FileDescriptor
 
 const file_proto_notification_proto_rawDesc = "" +
@@ -1628,7 +2445,89 @@ const file_proto_notification_proto_rawDesc = "" +
 	"\x04read\x18\x06 \x01(\rR\x04read\"B\n" +
 	"\x0eHealthResponse\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12\x18\n" +
-	"\aservice\x18\x02 \x01(\tR\aservice*\xc6\x01\n" +
+	"\aservice\x18\x02 \x01(\tR\aservice\"_\n" +
+	"\x1cProcessNotificationsResponse\x12'\n" +
+	"\x0fprocessed_count\x18\x01 \x01(\x05R\x0eprocessedCount\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\"\xa3\x03\n" +
+	"\x0fMetricsResponse\x12G\n" +
+	"\bcounters\x18\x01 \x03(\v2+.notification.MetricsResponse.CountersEntryR\bcounters\x12A\n" +
+	"\x06gauges\x18\x02 \x03(\v2).notification.MetricsResponse.GaugesEntryR\x06gauges\x12M\n" +
+	"\n" +
+	"histograms\x18\x03 \x03(\v2-.notification.MetricsResponse.HistogramsEntryR\n" +
+	"histograms\x1a;\n" +
+	"\rCountersEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x03R\x05value:\x028\x01\x1a9\n" +
+	"\vGaugesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\x1a=\n" +
+	"\x0fHistogramsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\"o\n" +
+	"\x1eCreateBulkNotificationsRequest\x12M\n" +
+	"\rnotifications\x18\x01 \x03(\v2'.notification.CreateNotificationRequestR\rnotifications\"\xa5\x01\n" +
+	"\x1fCreateBulkNotificationsResponse\x12<\n" +
+	"\aresults\x18\x01 \x03(\v2\".notification.NotificationResponseR\aresults\x12#\n" +
+	"\rsuccess_count\x18\x02 \x01(\x05R\fsuccessCount\x12\x1f\n" +
+	"\verror_count\x18\x03 \x01(\x05R\n" +
+	"errorCount\"F\n" +
+	"\x19MarkMultipleAsReadRequest\x12)\n" +
+	"\x10notification_ids\x18\x01 \x03(\rR\x0fnotificationIds\"`\n" +
+	"\x1aMarkMultipleAsReadResponse\x12#\n" +
+	"\rupdated_count\x18\x01 \x01(\x05R\fupdatedCount\x12\x1d\n" +
+	"\n" +
+	"failed_ids\x18\x02 \x03(\rR\tfailedIds\"\xf3\x02\n" +
+	"\x15UpdateTemplateRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\rR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12)\n" +
+	"\x10subject_template\x18\x04 \x01(\tR\x0fsubjectTemplate\x12#\n" +
+	"\rbody_template\x18\x05 \x01(\tR\fbodyTemplate\x12c\n" +
+	"\x10default_metadata\x18\x06 \x03(\v28.notification.UpdateTemplateRequest.DefaultMetadataEntryR\x0fdefaultMetadata\x12\x1b\n" +
+	"\tis_active\x18\a \x01(\bR\bisActive\x1aB\n" +
+	"\x14DefaultMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"'\n" +
+	"\x15DeleteTemplateRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\rR\x02id\"\xd4\x04\n" +
+	"\x0fUserPreferences\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\rR\x02id\x12\x17\n" +
+	"\aclub_id\x18\x02 \x01(\rR\x06clubId\x12\x17\n" +
+	"\auser_id\x18\x03 \x01(\tR\x06userId\x12#\n" +
+	"\remail_enabled\x18\x04 \x01(\bR\femailEnabled\x12\x1f\n" +
+	"\vsms_enabled\x18\x05 \x01(\bR\n" +
+	"smsEnabled\x12!\n" +
+	"\fpush_enabled\x18\x06 \x01(\bR\vpushEnabled\x12$\n" +
+	"\x0ein_app_enabled\x18\a \x01(\bR\finAppEnabled\x12#\n" +
+	"\rblocked_types\x18\b \x03(\tR\fblockedTypes\x12\x1a\n" +
+	"\btimezone\x18\t \x01(\tR\btimezone\x12-\n" +
+	"\x12preferred_language\x18\n" +
+	" \x01(\tR\x11preferredLanguage\x12F\n" +
+	"\x11quiet_hours_start\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\x0fquietHoursStart\x12B\n" +
+	"\x0fquiet_hours_end\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\rquietHoursEnd\x129\n" +
+	"\n" +
+	"created_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"M\n" +
+	"\x19GetUserPreferencesRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x17\n" +
+	"\aclub_id\x18\x02 \x01(\rR\x06clubId\"Z\n" +
+	"\x17UserPreferencesResponse\x12?\n" +
+	"\vpreferences\x18\x01 \x01(\v2\x1d.notification.UserPreferencesR\vpreferences\"\xdb\x03\n" +
+	"\x1cUpdateUserPreferencesRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x17\n" +
+	"\aclub_id\x18\x02 \x01(\rR\x06clubId\x12#\n" +
+	"\remail_enabled\x18\x03 \x01(\bR\femailEnabled\x12\x1f\n" +
+	"\vsms_enabled\x18\x04 \x01(\bR\n" +
+	"smsEnabled\x12!\n" +
+	"\fpush_enabled\x18\x05 \x01(\bR\vpushEnabled\x12$\n" +
+	"\x0ein_app_enabled\x18\x06 \x01(\bR\finAppEnabled\x12#\n" +
+	"\rblocked_types\x18\a \x03(\tR\fblockedTypes\x12\x1a\n" +
+	"\btimezone\x18\b \x01(\tR\btimezone\x12-\n" +
+	"\x12preferred_language\x18\t \x01(\tR\x11preferredLanguage\x12F\n" +
+	"\x11quiet_hours_start\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\x0fquietHoursStart\x12B\n" +
+	"\x0fquiet_hours_end\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\rquietHoursEnd*\xc6\x01\n" +
 	"\x10NotificationType\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17NOTIFICATION_TYPE_EMAIL\x10\x01\x12\x19\n" +
@@ -1648,7 +2547,7 @@ const file_proto_notification_proto_rawDesc = "" +
 	"\x19NOTIFICATION_PRIORITY_LOW\x10\x01\x12 \n" +
 	"\x1cNOTIFICATION_PRIORITY_NORMAL\x10\x02\x12\x1e\n" +
 	"\x1aNOTIFICATION_PRIORITY_HIGH\x10\x03\x12 \n" +
-	"\x1cNOTIFICATION_PRIORITY_URGENT\x10\x042\x8d\a\n" +
+	"\x1cNOTIFICATION_PRIORITY_URGENT\x10\x042\xfc\r\n" +
 	"\x13NotificationService\x12a\n" +
 	"\x12CreateNotification\x12'.notification.CreateNotificationRequest\x1a\".notification.NotificationResponse\x12[\n" +
 	"\x0fGetNotification\x12$.notification.GetNotificationRequest\x1a\".notification.NotificationResponse\x12i\n" +
@@ -1660,7 +2559,16 @@ const file_proto_notification_proto_rawDesc = "" +
 	"\x0eCreateTemplate\x12#.notification.CreateTemplateRequest\x1a\x1e.notification.TemplateResponse\x12]\n" +
 	"\x10GetClubTemplates\x12%.notification.GetClubTemplatesRequest\x1a\".notification.GetTemplatesResponse\x12F\n" +
 	"\bGetStats\x12\x1d.notification.GetStatsRequest\x1a\x1b.notification.StatsResponse\x12>\n" +
-	"\x06Health\x12\x16.google.protobuf.Empty\x1a\x1c.notification.HealthResponseB>Z<reciprocal-clubs-backend/services/notification-service/protob\x06proto3"
+	"\x06Health\x12\x16.google.protobuf.Empty\x1a\x1c.notification.HealthResponse\x12c\n" +
+	"\x1dProcessScheduledNotifications\x12\x16.google.protobuf.Empty\x1a*.notification.ProcessNotificationsResponse\x12^\n" +
+	"\x18RetryFailedNotifications\x12\x16.google.protobuf.Empty\x1a*.notification.ProcessNotificationsResponse\x12O\n" +
+	"\x16GetNotificationMetrics\x12\x16.google.protobuf.Empty\x1a\x1d.notification.MetricsResponse\x12v\n" +
+	"\x17CreateBulkNotifications\x12,.notification.CreateBulkNotificationsRequest\x1a-.notification.CreateBulkNotificationsResponse\x12g\n" +
+	"\x12MarkMultipleAsRead\x12'.notification.MarkMultipleAsReadRequest\x1a(.notification.MarkMultipleAsReadResponse\x12U\n" +
+	"\x0eUpdateTemplate\x12#.notification.UpdateTemplateRequest\x1a\x1e.notification.TemplateResponse\x12M\n" +
+	"\x0eDeleteTemplate\x12#.notification.DeleteTemplateRequest\x1a\x16.google.protobuf.Empty\x12d\n" +
+	"\x12GetUserPreferences\x12'.notification.GetUserPreferencesRequest\x1a%.notification.UserPreferencesResponse\x12j\n" +
+	"\x15UpdateUserPreferences\x12*.notification.UpdateUserPreferencesRequest\x1a%.notification.UserPreferencesResponseB>Z<reciprocal-clubs-backend/services/notification-service/protob\x06proto3"
 
 var (
 	file_proto_notification_proto_rawDescOnce sync.Once
@@ -1675,93 +2583,140 @@ func file_proto_notification_proto_rawDescGZIP() []byte {
 }
 
 var file_proto_notification_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_proto_notification_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
+var file_proto_notification_proto_msgTypes = make([]protoimpl.MessageInfo, 39)
 var file_proto_notification_proto_goTypes = []any{
-	(NotificationType)(0),               // 0: notification.NotificationType
-	(NotificationStatus)(0),             // 1: notification.NotificationStatus
-	(NotificationPriority)(0),           // 2: notification.NotificationPriority
-	(*Notification)(nil),                // 3: notification.Notification
-	(*NotificationTemplate)(nil),        // 4: notification.NotificationTemplate
-	(*CreateNotificationRequest)(nil),   // 5: notification.CreateNotificationRequest
-	(*GetNotificationRequest)(nil),      // 6: notification.GetNotificationRequest
-	(*GetClubNotificationsRequest)(nil), // 7: notification.GetClubNotificationsRequest
-	(*GetUserNotificationsRequest)(nil), // 8: notification.GetUserNotificationsRequest
-	(*MarkAsReadRequest)(nil),           // 9: notification.MarkAsReadRequest
-	(*SendImmediateRequest)(nil),        // 10: notification.SendImmediateRequest
-	(*CreateTemplateRequest)(nil),       // 11: notification.CreateTemplateRequest
-	(*GetClubTemplatesRequest)(nil),     // 12: notification.GetClubTemplatesRequest
-	(*GetStatsRequest)(nil),             // 13: notification.GetStatsRequest
-	(*NotificationResponse)(nil),        // 14: notification.NotificationResponse
-	(*GetNotificationsResponse)(nil),    // 15: notification.GetNotificationsResponse
-	(*SendResponse)(nil),                // 16: notification.SendResponse
-	(*TemplateResponse)(nil),            // 17: notification.TemplateResponse
-	(*GetTemplatesResponse)(nil),        // 18: notification.GetTemplatesResponse
-	(*StatsResponse)(nil),               // 19: notification.StatsResponse
-	(*HealthResponse)(nil),              // 20: notification.HealthResponse
-	nil,                                 // 21: notification.Notification.MetadataEntry
-	nil,                                 // 22: notification.NotificationTemplate.DefaultMetadataEntry
-	nil,                                 // 23: notification.CreateNotificationRequest.MetadataEntry
-	nil,                                 // 24: notification.SendImmediateRequest.MetadataEntry
-	nil,                                 // 25: notification.CreateTemplateRequest.DefaultMetadataEntry
-	(*timestamppb.Timestamp)(nil),       // 26: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),               // 27: google.protobuf.Empty
+	(NotificationType)(0),                   // 0: notification.NotificationType
+	(NotificationStatus)(0),                 // 1: notification.NotificationStatus
+	(NotificationPriority)(0),               // 2: notification.NotificationPriority
+	(*Notification)(nil),                    // 3: notification.Notification
+	(*NotificationTemplate)(nil),            // 4: notification.NotificationTemplate
+	(*CreateNotificationRequest)(nil),       // 5: notification.CreateNotificationRequest
+	(*GetNotificationRequest)(nil),          // 6: notification.GetNotificationRequest
+	(*GetClubNotificationsRequest)(nil),     // 7: notification.GetClubNotificationsRequest
+	(*GetUserNotificationsRequest)(nil),     // 8: notification.GetUserNotificationsRequest
+	(*MarkAsReadRequest)(nil),               // 9: notification.MarkAsReadRequest
+	(*SendImmediateRequest)(nil),            // 10: notification.SendImmediateRequest
+	(*CreateTemplateRequest)(nil),           // 11: notification.CreateTemplateRequest
+	(*GetClubTemplatesRequest)(nil),         // 12: notification.GetClubTemplatesRequest
+	(*GetStatsRequest)(nil),                 // 13: notification.GetStatsRequest
+	(*NotificationResponse)(nil),            // 14: notification.NotificationResponse
+	(*GetNotificationsResponse)(nil),        // 15: notification.GetNotificationsResponse
+	(*SendResponse)(nil),                    // 16: notification.SendResponse
+	(*TemplateResponse)(nil),                // 17: notification.TemplateResponse
+	(*GetTemplatesResponse)(nil),            // 18: notification.GetTemplatesResponse
+	(*StatsResponse)(nil),                   // 19: notification.StatsResponse
+	(*HealthResponse)(nil),                  // 20: notification.HealthResponse
+	(*ProcessNotificationsResponse)(nil),    // 21: notification.ProcessNotificationsResponse
+	(*MetricsResponse)(nil),                 // 22: notification.MetricsResponse
+	(*CreateBulkNotificationsRequest)(nil),  // 23: notification.CreateBulkNotificationsRequest
+	(*CreateBulkNotificationsResponse)(nil), // 24: notification.CreateBulkNotificationsResponse
+	(*MarkMultipleAsReadRequest)(nil),       // 25: notification.MarkMultipleAsReadRequest
+	(*MarkMultipleAsReadResponse)(nil),      // 26: notification.MarkMultipleAsReadResponse
+	(*UpdateTemplateRequest)(nil),           // 27: notification.UpdateTemplateRequest
+	(*DeleteTemplateRequest)(nil),           // 28: notification.DeleteTemplateRequest
+	(*UserPreferences)(nil),                 // 29: notification.UserPreferences
+	(*GetUserPreferencesRequest)(nil),       // 30: notification.GetUserPreferencesRequest
+	(*UserPreferencesResponse)(nil),         // 31: notification.UserPreferencesResponse
+	(*UpdateUserPreferencesRequest)(nil),    // 32: notification.UpdateUserPreferencesRequest
+	nil,                                     // 33: notification.Notification.MetadataEntry
+	nil,                                     // 34: notification.NotificationTemplate.DefaultMetadataEntry
+	nil,                                     // 35: notification.CreateNotificationRequest.MetadataEntry
+	nil,                                     // 36: notification.SendImmediateRequest.MetadataEntry
+	nil,                                     // 37: notification.CreateTemplateRequest.DefaultMetadataEntry
+	nil,                                     // 38: notification.MetricsResponse.CountersEntry
+	nil,                                     // 39: notification.MetricsResponse.GaugesEntry
+	nil,                                     // 40: notification.MetricsResponse.HistogramsEntry
+	nil,                                     // 41: notification.UpdateTemplateRequest.DefaultMetadataEntry
+	(*timestamppb.Timestamp)(nil),           // 42: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),                   // 43: google.protobuf.Empty
 }
 var file_proto_notification_proto_depIdxs = []int32{
 	0,  // 0: notification.Notification.type:type_name -> notification.NotificationType
 	1,  // 1: notification.Notification.status:type_name -> notification.NotificationStatus
 	2,  // 2: notification.Notification.priority:type_name -> notification.NotificationPriority
-	21, // 3: notification.Notification.metadata:type_name -> notification.Notification.MetadataEntry
-	26, // 4: notification.Notification.scheduled_for:type_name -> google.protobuf.Timestamp
-	26, // 5: notification.Notification.sent_at:type_name -> google.protobuf.Timestamp
-	26, // 6: notification.Notification.delivered_at:type_name -> google.protobuf.Timestamp
-	26, // 7: notification.Notification.read_at:type_name -> google.protobuf.Timestamp
-	26, // 8: notification.Notification.failed_at:type_name -> google.protobuf.Timestamp
-	26, // 9: notification.Notification.created_at:type_name -> google.protobuf.Timestamp
-	26, // 10: notification.Notification.updated_at:type_name -> google.protobuf.Timestamp
+	33, // 3: notification.Notification.metadata:type_name -> notification.Notification.MetadataEntry
+	42, // 4: notification.Notification.scheduled_for:type_name -> google.protobuf.Timestamp
+	42, // 5: notification.Notification.sent_at:type_name -> google.protobuf.Timestamp
+	42, // 6: notification.Notification.delivered_at:type_name -> google.protobuf.Timestamp
+	42, // 7: notification.Notification.read_at:type_name -> google.protobuf.Timestamp
+	42, // 8: notification.Notification.failed_at:type_name -> google.protobuf.Timestamp
+	42, // 9: notification.Notification.created_at:type_name -> google.protobuf.Timestamp
+	42, // 10: notification.Notification.updated_at:type_name -> google.protobuf.Timestamp
 	0,  // 11: notification.NotificationTemplate.type:type_name -> notification.NotificationType
-	22, // 12: notification.NotificationTemplate.default_metadata:type_name -> notification.NotificationTemplate.DefaultMetadataEntry
-	26, // 13: notification.NotificationTemplate.created_at:type_name -> google.protobuf.Timestamp
-	26, // 14: notification.NotificationTemplate.updated_at:type_name -> google.protobuf.Timestamp
+	34, // 12: notification.NotificationTemplate.default_metadata:type_name -> notification.NotificationTemplate.DefaultMetadataEntry
+	42, // 13: notification.NotificationTemplate.created_at:type_name -> google.protobuf.Timestamp
+	42, // 14: notification.NotificationTemplate.updated_at:type_name -> google.protobuf.Timestamp
 	0,  // 15: notification.CreateNotificationRequest.type:type_name -> notification.NotificationType
 	2,  // 16: notification.CreateNotificationRequest.priority:type_name -> notification.NotificationPriority
-	23, // 17: notification.CreateNotificationRequest.metadata:type_name -> notification.CreateNotificationRequest.MetadataEntry
-	26, // 18: notification.CreateNotificationRequest.scheduled_for:type_name -> google.protobuf.Timestamp
+	35, // 17: notification.CreateNotificationRequest.metadata:type_name -> notification.CreateNotificationRequest.MetadataEntry
+	42, // 18: notification.CreateNotificationRequest.scheduled_for:type_name -> google.protobuf.Timestamp
 	0,  // 19: notification.SendImmediateRequest.type:type_name -> notification.NotificationType
-	24, // 20: notification.SendImmediateRequest.metadata:type_name -> notification.SendImmediateRequest.MetadataEntry
+	36, // 20: notification.SendImmediateRequest.metadata:type_name -> notification.SendImmediateRequest.MetadataEntry
 	0,  // 21: notification.CreateTemplateRequest.type:type_name -> notification.NotificationType
-	25, // 22: notification.CreateTemplateRequest.default_metadata:type_name -> notification.CreateTemplateRequest.DefaultMetadataEntry
-	26, // 23: notification.GetStatsRequest.from_date:type_name -> google.protobuf.Timestamp
-	26, // 24: notification.GetStatsRequest.to_date:type_name -> google.protobuf.Timestamp
+	37, // 22: notification.CreateTemplateRequest.default_metadata:type_name -> notification.CreateTemplateRequest.DefaultMetadataEntry
+	42, // 23: notification.GetStatsRequest.from_date:type_name -> google.protobuf.Timestamp
+	42, // 24: notification.GetStatsRequest.to_date:type_name -> google.protobuf.Timestamp
 	3,  // 25: notification.NotificationResponse.notification:type_name -> notification.Notification
 	3,  // 26: notification.GetNotificationsResponse.notifications:type_name -> notification.Notification
 	3,  // 27: notification.SendResponse.notification:type_name -> notification.Notification
 	4,  // 28: notification.TemplateResponse.template:type_name -> notification.NotificationTemplate
 	4,  // 29: notification.GetTemplatesResponse.templates:type_name -> notification.NotificationTemplate
-	5,  // 30: notification.NotificationService.CreateNotification:input_type -> notification.CreateNotificationRequest
-	6,  // 31: notification.NotificationService.GetNotification:input_type -> notification.GetNotificationRequest
-	7,  // 32: notification.NotificationService.GetClubNotifications:input_type -> notification.GetClubNotificationsRequest
-	8,  // 33: notification.NotificationService.GetUserNotifications:input_type -> notification.GetUserNotificationsRequest
-	9,  // 34: notification.NotificationService.MarkAsRead:input_type -> notification.MarkAsReadRequest
-	10, // 35: notification.NotificationService.SendImmediate:input_type -> notification.SendImmediateRequest
-	11, // 36: notification.NotificationService.CreateTemplate:input_type -> notification.CreateTemplateRequest
-	12, // 37: notification.NotificationService.GetClubTemplates:input_type -> notification.GetClubTemplatesRequest
-	13, // 38: notification.NotificationService.GetStats:input_type -> notification.GetStatsRequest
-	27, // 39: notification.NotificationService.Health:input_type -> google.protobuf.Empty
-	14, // 40: notification.NotificationService.CreateNotification:output_type -> notification.NotificationResponse
-	14, // 41: notification.NotificationService.GetNotification:output_type -> notification.NotificationResponse
-	15, // 42: notification.NotificationService.GetClubNotifications:output_type -> notification.GetNotificationsResponse
-	15, // 43: notification.NotificationService.GetUserNotifications:output_type -> notification.GetNotificationsResponse
-	14, // 44: notification.NotificationService.MarkAsRead:output_type -> notification.NotificationResponse
-	16, // 45: notification.NotificationService.SendImmediate:output_type -> notification.SendResponse
-	17, // 46: notification.NotificationService.CreateTemplate:output_type -> notification.TemplateResponse
-	18, // 47: notification.NotificationService.GetClubTemplates:output_type -> notification.GetTemplatesResponse
-	19, // 48: notification.NotificationService.GetStats:output_type -> notification.StatsResponse
-	20, // 49: notification.NotificationService.Health:output_type -> notification.HealthResponse
-	40, // [40:50] is the sub-list for method output_type
-	30, // [30:40] is the sub-list for method input_type
-	30, // [30:30] is the sub-list for extension type_name
-	30, // [30:30] is the sub-list for extension extendee
-	0,  // [0:30] is the sub-list for field type_name
+	38, // 30: notification.MetricsResponse.counters:type_name -> notification.MetricsResponse.CountersEntry
+	39, // 31: notification.MetricsResponse.gauges:type_name -> notification.MetricsResponse.GaugesEntry
+	40, // 32: notification.MetricsResponse.histograms:type_name -> notification.MetricsResponse.HistogramsEntry
+	5,  // 33: notification.CreateBulkNotificationsRequest.notifications:type_name -> notification.CreateNotificationRequest
+	14, // 34: notification.CreateBulkNotificationsResponse.results:type_name -> notification.NotificationResponse
+	41, // 35: notification.UpdateTemplateRequest.default_metadata:type_name -> notification.UpdateTemplateRequest.DefaultMetadataEntry
+	42, // 36: notification.UserPreferences.quiet_hours_start:type_name -> google.protobuf.Timestamp
+	42, // 37: notification.UserPreferences.quiet_hours_end:type_name -> google.protobuf.Timestamp
+	42, // 38: notification.UserPreferences.created_at:type_name -> google.protobuf.Timestamp
+	42, // 39: notification.UserPreferences.updated_at:type_name -> google.protobuf.Timestamp
+	29, // 40: notification.UserPreferencesResponse.preferences:type_name -> notification.UserPreferences
+	42, // 41: notification.UpdateUserPreferencesRequest.quiet_hours_start:type_name -> google.protobuf.Timestamp
+	42, // 42: notification.UpdateUserPreferencesRequest.quiet_hours_end:type_name -> google.protobuf.Timestamp
+	5,  // 43: notification.NotificationService.CreateNotification:input_type -> notification.CreateNotificationRequest
+	6,  // 44: notification.NotificationService.GetNotification:input_type -> notification.GetNotificationRequest
+	7,  // 45: notification.NotificationService.GetClubNotifications:input_type -> notification.GetClubNotificationsRequest
+	8,  // 46: notification.NotificationService.GetUserNotifications:input_type -> notification.GetUserNotificationsRequest
+	9,  // 47: notification.NotificationService.MarkAsRead:input_type -> notification.MarkAsReadRequest
+	10, // 48: notification.NotificationService.SendImmediate:input_type -> notification.SendImmediateRequest
+	11, // 49: notification.NotificationService.CreateTemplate:input_type -> notification.CreateTemplateRequest
+	12, // 50: notification.NotificationService.GetClubTemplates:input_type -> notification.GetClubTemplatesRequest
+	13, // 51: notification.NotificationService.GetStats:input_type -> notification.GetStatsRequest
+	43, // 52: notification.NotificationService.Health:input_type -> google.protobuf.Empty
+	43, // 53: notification.NotificationService.ProcessScheduledNotifications:input_type -> google.protobuf.Empty
+	43, // 54: notification.NotificationService.RetryFailedNotifications:input_type -> google.protobuf.Empty
+	43, // 55: notification.NotificationService.GetNotificationMetrics:input_type -> google.protobuf.Empty
+	23, // 56: notification.NotificationService.CreateBulkNotifications:input_type -> notification.CreateBulkNotificationsRequest
+	25, // 57: notification.NotificationService.MarkMultipleAsRead:input_type -> notification.MarkMultipleAsReadRequest
+	27, // 58: notification.NotificationService.UpdateTemplate:input_type -> notification.UpdateTemplateRequest
+	28, // 59: notification.NotificationService.DeleteTemplate:input_type -> notification.DeleteTemplateRequest
+	30, // 60: notification.NotificationService.GetUserPreferences:input_type -> notification.GetUserPreferencesRequest
+	32, // 61: notification.NotificationService.UpdateUserPreferences:input_type -> notification.UpdateUserPreferencesRequest
+	14, // 62: notification.NotificationService.CreateNotification:output_type -> notification.NotificationResponse
+	14, // 63: notification.NotificationService.GetNotification:output_type -> notification.NotificationResponse
+	15, // 64: notification.NotificationService.GetClubNotifications:output_type -> notification.GetNotificationsResponse
+	15, // 65: notification.NotificationService.GetUserNotifications:output_type -> notification.GetNotificationsResponse
+	14, // 66: notification.NotificationService.MarkAsRead:output_type -> notification.NotificationResponse
+	16, // 67: notification.NotificationService.SendImmediate:output_type -> notification.SendResponse
+	17, // 68: notification.NotificationService.CreateTemplate:output_type -> notification.TemplateResponse
+	18, // 69: notification.NotificationService.GetClubTemplates:output_type -> notification.GetTemplatesResponse
+	19, // 70: notification.NotificationService.GetStats:output_type -> notification.StatsResponse
+	20, // 71: notification.NotificationService.Health:output_type -> notification.HealthResponse
+	21, // 72: notification.NotificationService.ProcessScheduledNotifications:output_type -> notification.ProcessNotificationsResponse
+	21, // 73: notification.NotificationService.RetryFailedNotifications:output_type -> notification.ProcessNotificationsResponse
+	22, // 74: notification.NotificationService.GetNotificationMetrics:output_type -> notification.MetricsResponse
+	24, // 75: notification.NotificationService.CreateBulkNotifications:output_type -> notification.CreateBulkNotificationsResponse
+	26, // 76: notification.NotificationService.MarkMultipleAsRead:output_type -> notification.MarkMultipleAsReadResponse
+	17, // 77: notification.NotificationService.UpdateTemplate:output_type -> notification.TemplateResponse
+	43, // 78: notification.NotificationService.DeleteTemplate:output_type -> google.protobuf.Empty
+	31, // 79: notification.NotificationService.GetUserPreferences:output_type -> notification.UserPreferencesResponse
+	31, // 80: notification.NotificationService.UpdateUserPreferences:output_type -> notification.UserPreferencesResponse
+	62, // [62:81] is the sub-list for method output_type
+	43, // [43:62] is the sub-list for method input_type
+	43, // [43:43] is the sub-list for extension type_name
+	43, // [43:43] is the sub-list for extension extendee
+	0,  // [0:43] is the sub-list for field type_name
 }
 
 func init() { file_proto_notification_proto_init() }
@@ -1775,7 +2730,7 @@ func file_proto_notification_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_notification_proto_rawDesc), len(file_proto_notification_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   23,
+			NumMessages:   39,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

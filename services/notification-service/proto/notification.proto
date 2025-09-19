@@ -38,6 +38,23 @@ service NotificationService {
 
     // Health check
     rpc Health(google.protobuf.Empty) returns (HealthResponse);
+
+    // Admin and monitoring endpoints
+    rpc ProcessScheduledNotifications(google.protobuf.Empty) returns (ProcessNotificationsResponse);
+    rpc RetryFailedNotifications(google.protobuf.Empty) returns (ProcessNotificationsResponse);
+    rpc GetNotificationMetrics(google.protobuf.Empty) returns (MetricsResponse);
+
+    // Bulk operations
+    rpc CreateBulkNotifications(CreateBulkNotificationsRequest) returns (CreateBulkNotificationsResponse);
+    rpc MarkMultipleAsRead(MarkMultipleAsReadRequest) returns (MarkMultipleAsReadResponse);
+
+    // Template operations
+    rpc UpdateTemplate(UpdateTemplateRequest) returns (TemplateResponse);
+    rpc DeleteTemplate(DeleteTemplateRequest) returns (google.protobuf.Empty);
+
+    // Preferences
+    rpc GetUserPreferences(GetUserPreferencesRequest) returns (UserPreferencesResponse);
+    rpc UpdateUserPreferences(UpdateUserPreferencesRequest) returns (UserPreferencesResponse);
 }
 
 // Enums
@@ -204,4 +221,89 @@ message StatsResponse {
 message HealthResponse {
     string status = 1;
     string service = 2;
+}
+
+// Additional request messages
+message ProcessNotificationsResponse {
+    int32 processed_count = 1;
+    string status = 2;
+}
+
+message MetricsResponse {
+    map<string, int64> counters = 1;
+    map<string, double> gauges = 2;
+    map<string, double> histograms = 3;
+}
+
+message CreateBulkNotificationsRequest {
+    repeated CreateNotificationRequest notifications = 1;
+}
+
+message CreateBulkNotificationsResponse {
+    repeated NotificationResponse results = 1;
+    int32 success_count = 2;
+    int32 error_count = 3;
+}
+
+message MarkMultipleAsReadRequest {
+    repeated uint32 notification_ids = 1;
+}
+
+message MarkMultipleAsReadResponse {
+    int32 updated_count = 1;
+    repeated uint32 failed_ids = 2;
+}
+
+message UpdateTemplateRequest {
+    uint32 id = 1;
+    string name = 2;
+    string description = 3;
+    string subject_template = 4;
+    string body_template = 5;
+    map<string, string> default_metadata = 6;
+    bool is_active = 7;
+}
+
+message DeleteTemplateRequest {
+    uint32 id = 1;
+}
+
+message UserPreferences {
+    uint32 id = 1;
+    uint32 club_id = 2;
+    string user_id = 3;
+    bool email_enabled = 4;
+    bool sms_enabled = 5;
+    bool push_enabled = 6;
+    bool in_app_enabled = 7;
+    repeated string blocked_types = 8;
+    string timezone = 9;
+    string preferred_language = 10;
+    google.protobuf.Timestamp quiet_hours_start = 11;
+    google.protobuf.Timestamp quiet_hours_end = 12;
+    google.protobuf.Timestamp created_at = 13;
+    google.protobuf.Timestamp updated_at = 14;
+}
+
+message GetUserPreferencesRequest {
+    string user_id = 1;
+    uint32 club_id = 2;
+}
+
+message UserPreferencesResponse {
+    UserPreferences preferences = 1;
+}
+
+message UpdateUserPreferencesRequest {
+    string user_id = 1;
+    uint32 club_id = 2;
+    bool email_enabled = 3;
+    bool sms_enabled = 4;
+    bool push_enabled = 5;
+    bool in_app_enabled = 6;
+    repeated string blocked_types = 7;
+    string timezone = 8;
+    string preferred_language = 9;
+    google.protobuf.Timestamp quiet_hours_start = 10;
+    google.protobuf.Timestamp quiet_hours_end = 11;
 }

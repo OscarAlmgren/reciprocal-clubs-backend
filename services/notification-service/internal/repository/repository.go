@@ -344,3 +344,232 @@ func (r *Repository) GetNotificationStats(ctx context.Context, clubID uint, from
 		"read":      statusCounts["read"],
 	}, nil
 }
+
+// Bulk operations
+
+// CreateBulkNotifications creates multiple notifications in a transaction
+func (r *Repository) CreateBulkNotifications(ctx context.Context, notifications []models.Notification) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for _, notification := range notifications {
+			if err := tx.Create(&notification).Error; err != nil {
+				r.logger.Error("Failed to create notification in bulk", map[string]interface{}{
+					"error":     err.Error(),
+					"club_id":   notification.ClubID,
+					"type":      notification.Type,
+					"recipient": notification.Recipient,
+				})
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// MarkMultipleAsRead marks multiple notifications as read
+func (r *Repository) MarkMultipleAsRead(ctx context.Context, notificationIDs []uint) (int64, error) {
+	now := time.Now()
+	result := r.db.WithContext(ctx).
+		Model(&models.Notification{}).
+		Where("id IN ?", notificationIDs).
+		Where("read_at IS NULL").
+		Updates(map[string]interface{}{
+			"status":  models.NotificationStatusRead,
+			"read_at": now,
+		})
+
+	if result.Error != nil {
+		r.logger.Error("Failed to mark multiple notifications as read", map[string]interface{}{
+			"error": result.Error.Error(),
+			"ids":   notificationIDs,
+		})
+		return 0, result.Error
+	}
+
+	r.logger.Info("Marked multiple notifications as read", map[string]interface{}{
+		"count": result.RowsAffected,
+		"ids":   notificationIDs,
+	})
+
+	return result.RowsAffected, nil
+}
+
+// DeleteNotificationTemplate soft deletes a notification template
+func (r *Repository) DeleteNotificationTemplate(ctx context.Context, id uint) error {
+	result := r.db.WithContext(ctx).
+		Model(&models.NotificationTemplate{}).
+		Where("id = ?", id).
+		Update("is_active", false)
+
+	if result.Error != nil {
+		r.logger.Error("Failed to delete notification template", map[string]interface{}{
+			"error": result.Error.Error(),
+			"id":    id,
+		})
+		return result.Error
+	}
+
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+
+	r.logger.Info("Notification template deleted successfully", map[string]interface{}{
+		"template_id": id,
+	})
+
+	return nil
+}
+
+// GetUserPreferences retrieves user preferences with defaults if not found
+func (r *Repository) GetUserPreferences(ctx context.Context, userID string, clubID uint) (*models.UserPreferences, error) {
+	var preference models.UserPreferences
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND club_id = ?", userID, clubID).
+		First(&preference).Error
+
+	if err == gorm.ErrRecordNotFound {
+		// Return default preferences
+		return &models.UserPreferences{
+			UserID:        userID,
+			ClubID:        clubID,
+			EmailEnabled:  true,
+			SMSEnabled:    true,
+			PushEnabled:   true,
+			InAppEnabled:  true,
+			PreferredLang: "en",
+			Timezone:      "UTC",
+		}, nil
+	}
+
+	if err != nil {
+		r.logger.Error("Failed to get user preferences", map[string]interface{}{
+			"error":   err.Error(),
+			"user_id": userID,
+			"club_id": clubID,
+		})
+		return nil, err
+	}
+
+	return &preference, nil
+}
+
+// UpsertUserPreferences creates or updates user preferences
+func (r *Repository) UpsertUserPreferences(ctx context.Context, preference *models.UserPreferences) error {
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND club_id = ?", preference.UserID, preference.ClubID).
+		FirstOrCreate(preference).Error
+
+	if err != nil {
+		r.logger.Error("Failed to upsert user preferences", map[string]interface{}{
+			"error":   err.Error(),
+			"user_id": preference.UserID,
+			"club_id": preference.ClubID,
+		})
+		return err
+	}
+
+	r.logger.Info("User preferences updated successfully", map[string]interface{}{
+		"user_id": preference.UserID,
+		"club_id": preference.ClubID,
+	})
+
+	return nil
+}
+
+// Advanced query methods
+
+// GetNotificationsByStatus retrieves notifications by status with pagination
+func (r *Repository) GetNotificationsByStatus(ctx context.Context, clubID uint, status models.NotificationStatus, limit, offset int) ([]models.Notification, error) {
+	var notifications []models.Notification
+	query := r.db.WithContext(ctx).
+		Where("club_id = ? AND status = ?", clubID, status).
+		Order("created_at DESC")
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	if offset > 0 {
+		query = query.Offset(offset)
+	}
+
+	if err := query.Find(&notifications).Error; err != nil {
+		r.logger.Error("Failed to get notifications by status", map[string]interface{}{
+			"error":   err.Error(),
+			"club_id": clubID,
+			"status":  status,
+		})
+		return nil, err
+	}
+
+	return notifications, nil
+}
+
+// GetNotificationsByType retrieves notifications by type with pagination
+func (r *Repository) GetNotificationsByType(ctx context.Context, clubID uint, notificationType models.NotificationType, limit, offset int) ([]models.Notification, error) {
+	var notifications []models.Notification
+	query := r.db.WithContext(ctx).
+		Where("club_id = ? AND type = ?", clubID, notificationType).
+		Order("created_at DESC")
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	if offset > 0 {
+		query = query.Offset(offset)
+	}
+
+	if err := query.Find(&notifications).Error; err != nil {
+		r.logger.Error("Failed to get notifications by type", map[string]interface{}{
+			"error":   err.Error(),
+			"club_id": clubID,
+			"type":    notificationType,
+		})
+		return nil, err
+	}
+
+	return notifications, nil
+}
+
+// GetUnreadNotificationsCount gets count of unread notifications for a user
+func (r *Repository) GetUnreadNotificationsCount(ctx context.Context, userID string, clubID uint) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&models.Notification{}).
+		Where("user_id = ? AND club_id = ? AND read_at IS NULL", userID, clubID).
+		Count(&count).Error
+
+	if err != nil {
+		r.logger.Error("Failed to get unread notifications count", map[string]interface{}{
+			"error":   err.Error(),
+			"user_id": userID,
+			"club_id": clubID,
+		})
+		return 0, err
+	}
+
+	return count, nil
+}
+
+// GetRecentNotifications gets most recent notifications with optional filters
+func (r *Repository) GetRecentNotifications(ctx context.Context, clubID uint, hours int, limit int) ([]models.Notification, error) {
+	var notifications []models.Notification
+	since := time.Now().Add(time.Duration(-hours) * time.Hour)
+
+	query := r.db.WithContext(ctx).
+		Where("club_id = ? AND created_at >= ?", clubID, since).
+		Order("created_at DESC")
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+
+	if err := query.Find(&notifications).Error; err != nil {
+		r.logger.Error("Failed to get recent notifications", map[string]interface{}{
+			"error":   err.Error(),
+			"club_id": clubID,
+			"hours":   hours,
+		})
+		return nil, err
+	}
+
+	return notifications, nil
+}

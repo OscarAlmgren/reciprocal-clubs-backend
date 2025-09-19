@@ -4,8 +4,10 @@ go 1.25
 
 require (
 	github.com/gorilla/mux v1.8.1
+	github.com/stretchr/testify v1.11.1
 	google.golang.org/grpc v1.75.1
 	google.golang.org/protobuf v1.36.9
+	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.0
 	reciprocal-clubs-backend/pkg/shared/config v0.0.0
 	reciprocal-clubs-backend/pkg/shared/database v0.0.0
@@ -15,10 +17,15 @@ require (
 )
 
 require (
+	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
+	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
+	github.com/stretchr/objx v0.5.2 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 require (
