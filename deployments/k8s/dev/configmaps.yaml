@@ -1,0 +1,201 @@
+# =========================================================================
+# Kubernetes Development ConfigMaps
+# =========================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: reciprocal-clubs-dev-config
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: reciprocal-clubs
+    environment: development
+data:
+  # Application Environment
+  APP_ENV: "development"
+  LOG_LEVEL: "debug"
+  DEBUG: "true"
+
+  # Database Configuration
+  DB_HOST: "postgres-dev-service"
+  DB_PORT: "5432"
+  DB_NAME: "reciprocal_clubs_dev"
+  DB_USERNAME: "postgres"
+
+  # Redis Configuration
+  REDIS_HOST: "redis-dev-service"
+  REDIS_PORT: "6379"
+
+  # NATS Configuration
+  NATS_URL: "nats://nats-dev-service:4222"
+
+  # Hanko Configuration
+  HANKO_BASE_URL: "http://hanko-dev-service:8000"
+  MFA_ISSUER: "Reciprocal Clubs Dev"
+
+  # CORS Configuration (Development)
+  CORS_ALLOWED_ORIGINS: "http://localhost:3000,http://localhost:8080,http://dev.reciprocal-clubs.local"
+
+  # Service Discovery
+  API_GATEWAY_URL: "http://api-gateway-dev-service:8080"
+  AUTH_SERVICE_URL: "http://auth-service-dev-service:8081"
+  MEMBER_SERVICE_URL: "http://member-service-dev-service:8082"
+  RECIPROCAL_SERVICE_URL: "http://reciprocal-service-dev-service:8083"
+  BLOCKCHAIN_SERVICE_URL: "http://blockchain-service-dev-service:8084"
+  NOTIFICATION_SERVICE_URL: "http://notification-service-dev-service:8085"
+  ANALYTICS_SERVICE_URL: "http://analytics-service-dev-service:8086"
+  GOVERNANCE_SERVICE_URL: "http://governance-service-dev-service:8087"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-dev-config
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: postgres
+    environment: development
+data:
+  POSTGRES_DB: "reciprocal_clubs_dev"
+  POSTGRES_USER: "postgres"
+  # Initialize script for multiple databases
+  init-db.sql: |
+    CREATE DATABASE IF NOT EXISTS auth_service;
+    CREATE DATABASE IF NOT EXISTS member_service;
+    CREATE DATABASE IF NOT EXISTS reciprocal_service;
+    CREATE DATABASE IF NOT EXISTS blockchain_service;
+    CREATE DATABASE IF NOT EXISTS notification_service;
+    CREATE DATABASE IF NOT EXISTS analytics_service;
+    CREATE DATABASE IF NOT EXISTS governance_service;
+
+    -- Create read-only user for reporting
+    CREATE USER IF NOT EXISTS 'readonly'@'%' IDENTIFIED BY 'readonly';
+    GRANT SELECT ON *.* TO 'readonly'@'%';
+
+    -- Development seed data (minimal)
+    INSERT INTO auth_service.users (id, email, created_at) VALUES
+    ('dev-user-1', 'dev@reciprocal-clubs.com', NOW())
+    ON DUPLICATE KEY UPDATE email=email;
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-dev-config
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: redis
+    environment: development
+data:
+  redis.conf: |
+    # Redis Development Configuration
+    bind 0.0.0.0
+    port 6379
+
+    # Persistence
+    appendonly yes
+    appendfsync everysec
+
+    # Memory management
+    maxmemory 1gb
+    maxmemory-policy allkeys-lru
+
+    # Development settings
+    loglevel verbose
+    save 900 1
+    save 300 10
+    save 60 10000
+
+    # Security (relaxed for development)
+    protected-mode no
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nats-dev-config
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: nats
+    environment: development
+data:
+  nats.conf: |
+    # NATS Development Configuration
+    server_name: nats-dev
+
+    # Listening
+    port: 4222
+    http_port: 8222
+
+    # JetStream
+    jetstream {
+      store_dir: "/data"
+      max_memory_store: 256MB
+      max_file_store: 2GB
+    }
+
+    # Clustering
+    cluster {
+      name: reciprocal-clubs-dev
+      port: 6222
+      routes: [
+        nats://nats-dev-service:6222
+      ]
+    }
+
+    # Monitoring
+    http: 8222
+
+    # Logging
+    debug: true
+    trace: true
+    log_time: true
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hanko-dev-config
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: hanko
+    environment: development
+data:
+  config.yaml: |
+    # Hanko Development Configuration
+    server:
+      public:
+        address: 0.0.0.0:8000
+        cors:
+          allow_origins:
+            - "http://localhost:3000"
+            - "http://dev.reciprocal-clubs.local"
+          allow_headers:
+            - "Content-Type"
+            - "Authorization"
+      admin:
+        address: 0.0.0.0:8001
+
+    database:
+      host: hanko-postgres-dev-service
+      port: 5432
+      database: hanko_dev
+      user: hanko
+      password: hankodevpassword
+
+    secrets:
+      keys:
+        - "development-secret-key-32-chars-min"
+
+    service:
+      name: "Reciprocal Clubs Dev"
+
+    password:
+      enabled: true
+
+    webauthn:
+      relying_party:
+        id: "dev.reciprocal-clubs.local"
+        display_name: "Reciprocal Clubs Development"
+        origins:
+          - "http://localhost:3000"
+          - "http://dev.reciprocal-clubs.local"

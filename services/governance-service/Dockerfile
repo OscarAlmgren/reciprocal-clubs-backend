@@ -1,62 +1,88 @@
-# Multi-stage Dockerfile for Analytics Service
-# Build stage
-FROM golang:1.23-alpine AS builder
+# =========================================================================
+# Multi-stage Dockerfile for Governance Service
+# =========================================================================
+
+# =========================================================================
+# Stage 1: Build Stage
+# =========================================================================
+FROM golang:1.25-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache \
     git \
     ca-certificates \
-    build-base
+    tzdata \
+    build-base \
+    protobuf \
+    protobuf-dev
 
-# Set working directory to the full project
+# Set working directory to project root
 WORKDIR /build
 
 # Create non-root user for build
 RUN adduser -D -g '' appuser
 
-# Copy entire project for build (this ensures all dependencies are available)
+# Copy entire project for workspace support
 COPY . .
 
-# Build from project root using Go workspace
-WORKDIR /build
+# Install protobuf tools if needed
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
+    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+# Change to service directory
+WORKDIR /build/services/governance-service
+
+# Download dependencies (workspace-aware)
+RUN go mod download || echo "Some dependencies may be missing, continuing..."
+
+# Generate protobuf code if proto files exist
+RUN if [ -d "api/proto" ] || [ -d "proto" ]; then \
+        find . -name "*.proto" -exec protoc \
+            --go_out=. \
+            --go_opt=paths=source_relative \
+            --go-grpc_out=. \
+            --go-grpc_opt=paths=source_relative \
+            --proto_path=. \
+            {} + 2>/dev/null || true \
+    ; fi
 
 # Build the application with optimizations
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags='-w -s -extldflags "-static"' \
     -a -installsuffix cgo \
     -o governance-service \
-    ./services/governance-service/cmd/main.go
+    cmd/main.go
 
-# Final stage
+# =========================================================================
+# Stage 2: Final Stage
+# =========================================================================
 FROM alpine:latest
 
-# Install ca-certificates for HTTPS requests
-RUN apk --no-cache add ca-certificates tzdata
+# Install runtime dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    tzdata \
+    curl
 
-# Create working directory
-WORKDIR /root/
+# Create non-root user with consistent UID/GID
+RUN addgroup -S appgroup -g 1001 && \
+    adduser -S appuser -u 1001 -G appgroup
 
-# Import user and group files for security
-RUN adduser -D -g '' appuser
+# Set working directory
+WORKDIR /app
 
-# Copy the binary from builder stage
-COPY --from=builder /build/governance-service .
+# Copy binary from builder stage with proper ownership
+COPY --from=builder --chown=appuser:appgroup /build/services/governance-service/governance-service ./
 
-# Change ownership to non-root user
-RUN chown appuser:appuser governance-service
-
-# Use non-root user
+# Switch to non-root user
 USER appuser
 
-# Expose ports (HTTP and gRPC)
-EXPOSE 8088 9098
+# Expose service ports (HTTP and gRPC)
+EXPOSE 8087 9097
 
-# Add health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD ./governance-service health || exit 1
-
-# Set entrypoint
-ENTRYPOINT ["./governance-service"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8087/health || exit 1
 
 # Metadata labels
 LABEL maintainer="Governance Service Team"
@@ -66,3 +92,6 @@ LABEL org.opencontainers.image.source="https://github.com/reciprocal-clubs/backe
 LABEL org.opencontainers.image.documentation="https://docs.reciprocal-clubs.com/governance-service"
 LABEL org.opencontainers.image.vendor="Reciprocal Clubs"
 LABEL org.opencontainers.image.licenses="MIT"
+
+# Set entrypoint
+ENTRYPOINT ["./governance-service"]

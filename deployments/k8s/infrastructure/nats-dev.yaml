@@ -1,0 +1,453 @@
+# =========================================================================
+# NATS Development Infrastructure
+# =========================================================================
+# Comprehensive NATS messaging deployment for development environment
+# StatefulSet for clustering, persistent volume for JetStream, ConfigMap mount
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nats-dev-pv
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: nats
+    environment: development
+    component: messaging
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /mnt/data/nats-dev
+    type: DirectoryOrCreate
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nats-dev-pvc
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: nats
+    environment: development
+    component: messaging
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: manual
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nats-dev
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: nats
+    environment: development
+    component: messaging
+    version: "2.10"
+spec:
+  serviceName: nats-dev-headless
+  replicas: 3
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: nats
+      environment: development
+  template:
+    metadata:
+      labels:
+        app: nats
+        environment: development
+        component: messaging
+        version: "2.10"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "7777"
+        config/checksum: "dev-nats-config"
+    spec:
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+      initContainers:
+      - name: nats-init
+        image: nats:2.10-alpine
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+        command:
+        - sh
+        - -c
+        - |
+          set -e
+          echo "Initializing NATS data directory..."
+          mkdir -p /data/jetstream
+          chown -R nats:nats /data
+          chmod -R 755 /data
+          echo "NATS init container completed"
+        volumeMounts:
+        - name: nats-storage
+          mountPath: /data
+        - name: tmp
+          mountPath: /tmp
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+      containers:
+      - name: nats
+        image: nats:2.10-alpine
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+        command:
+        - nats-server
+        - --config
+        - /etc/nats/nats.conf
+        ports:
+        - containerPort: 4222
+          name: client
+          protocol: TCP
+        - containerPort: 6222
+          name: cluster
+          protocol: TCP
+        - containerPort: 8222
+          name: monitor
+          protocol: TCP
+        - containerPort: 7777
+          name: metrics
+          protocol: TCP
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: CLUSTER_ADVERTISE
+          value: $(POD_NAME).nats-dev-headless.$(POD_NAMESPACE).svc.cluster.local
+        volumeMounts:
+        - name: nats-config
+          mountPath: /etc/nats
+          readOnly: true
+        - name: nats-storage
+          mountPath: /data
+        - name: tmp
+          mountPath: /tmp
+        - name: pid
+          mountPath: /var/run/nats
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8222
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8222
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+          successThreshold: 1
+        startupProbe:
+          httpGet:
+            path: /healthz
+            port: 8222
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 30
+          successThreshold: 1
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - nats-server
+              - --signal
+              - quit
+      # NATS Exporter for monitoring
+      - name: nats-exporter
+        image: natsio/prometheus-nats-exporter:0.12.0
+        securityContext:
+          runAsUser: 65534
+          runAsGroup: 65534
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+        args:
+        - -connz
+        - -routez
+        - -subz
+        - -varz
+        - -prefix=nats
+        - -use_internal_server_id
+        - -jsz=all
+        - http://localhost:8222
+        ports:
+        - containerPort: 7777
+          name: metrics
+          protocol: TCP
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+          limits:
+            memory: "64Mi"
+            cpu: "50m"
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: 7777
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /metrics
+            port: 7777
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      volumes:
+      - name: nats-config
+        configMap:
+          name: nats-dev-config
+          items:
+          - key: nats.conf
+            path: nats.conf
+          defaultMode: 0644
+      - name: tmp
+        emptyDir: {}
+      - name: pid
+        emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - nats
+              topologyKey: kubernetes.io/hostname
+      tolerations:
+      - key: "node.kubernetes.io/disk-pressure"
+        operator: "Exists"
+        effect: "NoSchedule"
+        tolerationSeconds: 300
+  volumeClaimTemplates:
+  - metadata:
+      name: nats-storage
+      labels:
+        app: nats
+        environment: development
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 5Gi
+
+---
+# Headless service for cluster discovery
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats-dev-headless
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: nats
+    environment: development
+    component: messaging
+    service-type: headless
+spec:
+  selector:
+    app: nats
+    environment: development
+  ports:
+  - name: client
+    port: 4222
+    targetPort: 4222
+    protocol: TCP
+  - name: cluster
+    port: 6222
+    targetPort: 6222
+    protocol: TCP
+  - name: monitor
+    port: 8222
+    targetPort: 8222
+    protocol: TCP
+  - name: metrics
+    port: 7777
+    targetPort: 7777
+    protocol: TCP
+  clusterIP: None
+  sessionAffinity: None
+
+---
+# Regular service for client connections
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats-dev-service
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: nats
+    environment: development
+    component: messaging
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "7777"
+    prometheus.io/path: "/metrics"
+spec:
+  selector:
+    app: nats
+    environment: development
+  ports:
+  - name: client
+    port: 4222
+    targetPort: 4222
+    protocol: TCP
+  - name: monitor
+    port: 8222
+    targetPort: 8222
+    protocol: TCP
+  - name: metrics
+    port: 7777
+    targetPort: 7777
+    protocol: TCP
+  type: ClusterIP
+  sessionAffinity: None
+
+---
+# Service Monitor for Prometheus (optional)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: nats-dev-metrics
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: nats
+    environment: development
+    component: messaging
+spec:
+  selector:
+    matchLabels:
+      app: nats
+      environment: development
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+    honorLabels: true
+
+---
+# Pod Disruption Budget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: nats-dev-pdb
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: nats
+    environment: development
+    component: messaging
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: nats
+      environment: development
+
+---
+# Horizontal Pod Autoscaler (optional for development)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nats-dev-hpa
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: nats
+    environment: development
+    component: messaging
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: nats-dev
+  minReplicas: 3
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Pods
+        value: 1
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Pods
+        value: 1
+        periodSeconds: 60

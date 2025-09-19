@@ -1,0 +1,239 @@
+# =========================================================================
+# Analytics Service - Development Environment
+# =========================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-service-dev
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: analytics-service
+    environment: development
+    component: analytics
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: analytics-service
+      environment: development
+  template:
+    metadata:
+      labels:
+        app: analytics-service
+        environment: development
+        component: analytics
+    spec:
+      securityContext:
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        runAsNonRoot: true
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - analytics-service
+              topologyKey: kubernetes.io/hostname
+      initContainers:
+      - name: wait-for-postgres
+        image: postgres:15-alpine
+        command: ['sh', '-c', 'until pg_isready -h $DB_HOST -p $DB_PORT -U $DB_USERNAME; do echo waiting for postgres; sleep 2; done;']
+        envFrom:
+        - configMapRef:
+            name: reciprocal-clubs-dev-config
+        - secretRef:
+            name: reciprocal-clubs-dev-secrets
+      - name: wait-for-redis
+        image: redis:7-alpine
+        command: ['sh', '-c', 'until redis-cli -h $REDIS_HOST -p $REDIS_PORT ping; do echo waiting for redis; sleep 2; done;']
+        envFrom:
+        - configMapRef:
+            name: reciprocal-clubs-dev-config
+      - name: wait-for-nats
+        image: nats:2.10-alpine
+        command: ['sh', '-c', 'until nats-server --check-config && nats account info -s $NATS_URL; do echo waiting for nats; sleep 2; done;']
+        envFrom:
+        - configMapRef:
+            name: reciprocal-clubs-dev-config
+      - name: wait-for-auth-service
+        image: curlimages/curl:latest
+        command: ['sh', '-c', 'until curl -f $AUTH_SERVICE_URL/health; do echo waiting for auth-service; sleep 2; done;']
+        envFrom:
+        - configMapRef:
+            name: reciprocal-clubs-dev-config
+      containers:
+      - name: analytics-service
+        image: reciprocal-clubs/analytics-service:dev
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 8086
+          protocol: TCP
+        - name: grpc
+          containerPort: 9086
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        env:
+        - name: PORT
+          value: "8086"
+        - name: GRPC_PORT
+          value: "9086"
+        - name: METRICS_PORT
+          value: "9090"
+        envFrom:
+        - configMapRef:
+            name: reciprocal-clubs-dev-config
+        - secretRef:
+            name: reciprocal-clubs-dev-secrets
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8086
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8086
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: logs
+          mountPath: /app/logs
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: logs
+        emptyDir: {}
+      imagePullSecrets:
+      - name: reciprocal-clubs-registry-secret
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: analytics-service-dev-service
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: analytics-service
+    environment: development
+    component: analytics
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8086
+    targetPort: 8086
+    protocol: TCP
+  - name: grpc
+    port: 9086
+    targetPort: 9086
+    protocol: TCP
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+    protocol: TCP
+  selector:
+    app: analytics-service
+    environment: development
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: analytics-service-dev-monitor
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: analytics-service
+    environment: development
+    component: analytics
+spec:
+  selector:
+    matchLabels:
+      app: analytics-service
+      environment: development
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: analytics-service-dev-hpa
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: analytics-service
+    environment: development
+    component: analytics
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: analytics-service-dev
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: analytics-service-dev-pdb
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: analytics-service
+    environment: development
+    component: analytics
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: analytics-service
+      environment: development

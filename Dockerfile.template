@@ -1,5 +1,5 @@
 # =========================================================================
-# Multi-stage Dockerfile for Auth Service
+# Multi-stage Dockerfile Template for Reciprocal Clubs Backend Services
 # =========================================================================
 
 # =========================================================================
@@ -30,7 +30,7 @@ RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
     go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
 # Change to service directory
-WORKDIR /build/services/auth-service
+WORKDIR /build/services/__SERVICE_NAME__
 
 # Download dependencies (workspace-aware)
 RUN go mod download || echo "Some dependencies may be missing, continuing..."
@@ -50,7 +50,7 @@ RUN if [ -d "api/proto" ] || [ -d "proto" ]; then \
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags='-w -s -extldflags "-static"' \
     -a -installsuffix cgo \
-    -o auth-service \
+    -o __SERVICE_NAME__ \
     cmd/main.go
 
 # =========================================================================
@@ -72,26 +72,26 @@ RUN addgroup -S appgroup -g 1001 && \
 WORKDIR /app
 
 # Copy binary from builder stage with proper ownership
-COPY --from=builder --chown=appuser:appgroup /build/services/auth-service/auth-service ./
+COPY --from=builder --chown=appuser:appgroup /build/services/__SERVICE_NAME__/__SERVICE_NAME__ ./
 
 # Switch to non-root user
 USER appuser
 
 # Expose service ports (HTTP and gRPC)
-EXPOSE 8081 9081
+EXPOSE __HTTP_PORT__ __GRPC_PORT__
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:8081/health || exit 1
+    CMD curl -f http://localhost:__HTTP_PORT__/health || exit 1
 
 # Metadata labels
-LABEL maintainer="Auth Service Team"
+LABEL maintainer="__SERVICE_NAME__ Service Team"
 LABEL version="1.0.0"
-LABEL description="Auth Service for Reciprocal Clubs Backend"
+LABEL description="__SERVICE_NAME__ Service for Reciprocal Clubs Backend"
 LABEL org.opencontainers.image.source="https://github.com/reciprocal-clubs/backend"
-LABEL org.opencontainers.image.documentation="https://docs.reciprocal-clubs.com/auth-service"
+LABEL org.opencontainers.image.documentation="https://docs.reciprocal-clubs.com/__SERVICE_NAME__"
 LABEL org.opencontainers.image.vendor="Reciprocal Clubs"
 LABEL org.opencontainers.image.licenses="MIT"
 
 # Set entrypoint
-ENTRYPOINT ["./auth-service"]
+ENTRYPOINT ["./__SERVICE_NAME__"]

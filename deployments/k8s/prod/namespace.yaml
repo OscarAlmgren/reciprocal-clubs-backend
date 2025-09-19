@@ -1,0 +1,257 @@
+# =========================================================================
+# Production Namespace Configuration with Security and Resource Management
+# =========================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: reciprocal-clubs-prod
+  labels:
+    name: reciprocal-clubs-prod
+    environment: production
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/instance: production
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: namespace
+    app.kubernetes.io/part-of: reciprocal-clubs-platform
+    app.kubernetes.io/managed-by: kubernetes
+    security.policy: strict
+  annotations:
+    kubernetes.io/managed-by: "reciprocal-clubs-platform"
+    security.kubernetes.io/pod-security-standard: "restricted"
+    security.kubernetes.io/pod-security-warnings: "restricted"
+    security.kubernetes.io/pod-security-audit: "restricted"
+
+---
+# =========================================================================
+# Resource Quota - Production Resource Limits
+# =========================================================================
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: reciprocal-clubs-prod-quota
+  namespace: reciprocal-clubs-prod
+  labels:
+    environment: production
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: resource-quota
+spec:
+  hard:
+    # Pod limits
+    pods: "100"
+    persistentvolumeclaims: "50"
+    services: "50"
+    secrets: "50"
+    configmaps: "50"
+
+    # Compute resources
+    requests.cpu: "20"
+    requests.memory: "40Gi"
+    limits.cpu: "40"
+    limits.memory: "80Gi"
+
+    # Storage
+    requests.storage: "1Ti"
+
+    # Network
+    services.loadbalancers: "10"
+    services.nodeports: "5"
+
+---
+# =========================================================================
+# Limit Range - Default Resource Limits for Pods
+# =========================================================================
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: reciprocal-clubs-prod-limits
+  namespace: reciprocal-clubs-prod
+  labels:
+    environment: production
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: limit-range
+spec:
+  limits:
+  - type: Container
+    default:
+      cpu: "500m"
+      memory: "1Gi"
+    defaultRequest:
+      cpu: "100m"
+      memory: "256Mi"
+    max:
+      cpu: "4"
+      memory: "8Gi"
+    min:
+      cpu: "50m"
+      memory: "128Mi"
+  - type: Pod
+    max:
+      cpu: "8"
+      memory: "16Gi"
+    min:
+      cpu: "100m"
+      memory: "256Mi"
+  - type: PersistentVolumeClaim
+    max:
+      storage: "500Gi"
+    min:
+      storage: "1Gi"
+
+---
+# =========================================================================
+# Network Policy - Secure Network Segmentation
+# =========================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: reciprocal-clubs-prod-network-policy
+  namespace: reciprocal-clubs-prod
+  labels:
+    environment: production
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+
+  # Ingress rules
+  ingress:
+  # Allow traffic from ingress controllers
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+
+  # Allow internal namespace communication
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: reciprocal-clubs-prod
+
+  # Allow monitoring namespace access
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 8080  # metrics endpoint
+    - protocol: TCP
+      port: 9090  # prometheus metrics
+
+  # Egress rules
+  egress:
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+  # Allow HTTPS to external services
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+
+  # Allow internal namespace communication
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: reciprocal-clubs-prod
+
+  # Allow access to external databases and services
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 5432  # PostgreSQL
+    - protocol: TCP
+      port: 6379  # Redis
+    - protocol: TCP
+      port: 4222  # NATS
+
+---
+# =========================================================================
+# Pod Security Policy (if PSP is available)
+# =========================================================================
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: reciprocal-clubs-prod-psp
+  namespace: reciprocal-clubs-prod
+  labels:
+    environment: production
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: pod-security-policy
+spec:
+  privileged: false
+  allowPrivilegeEscalation: false
+  requiredDropCapabilities:
+    - ALL
+  volumes:
+    - 'configMap'
+    - 'emptyDir'
+    - 'projected'
+    - 'secret'
+    - 'downwardAPI'
+    - 'persistentVolumeClaim'
+  runAsUser:
+    rule: 'MustRunAsNonRoot'
+  runAsGroup:
+    rule: 'MustRunAs'
+    ranges:
+      - min: 1
+        max: 65535
+  seLinux:
+    rule: 'RunAsAny'
+  supplementalGroups:
+    rule: 'MustRunAs'
+    ranges:
+      - min: 1
+        max: 65535
+  fsGroup:
+    rule: 'RunAsAny'
+
+---
+# =========================================================================
+# Pod Disruption Budget - Ensure High Availability
+# =========================================================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: reciprocal-clubs-prod-pdb
+  namespace: reciprocal-clubs-prod
+  labels:
+    environment: production
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: pod-disruption-budget
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      environment: production
+      app.kubernetes.io/name: reciprocal-clubs
+
+---
+# =========================================================================
+# Priority Class for Production Workloads
+# =========================================================================
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: reciprocal-clubs-prod-priority
+  labels:
+    environment: production
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: priority-class
+value: 1000
+globalDefault: false
+description: "Priority class for Reciprocal Clubs production workloads"

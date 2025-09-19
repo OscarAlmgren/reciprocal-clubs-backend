@@ -1,0 +1,623 @@
+# =========================================================================
+# Production ConfigMaps - Optimized for Performance and Security
+# =========================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: reciprocal-clubs-prod-config
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: configuration
+    environment: production
+data:
+  # Application Environment
+  APP_ENV: "production"
+  LOG_LEVEL: "info"
+  DEBUG: "false"
+  NODE_ENV: "production"
+  GO_ENV: "production"
+
+  # Performance Optimization
+  GOMAXPROCS: "4"
+  GOGC: "100"
+  MAX_CONNECTIONS: "1000"
+  POOL_SIZE: "50"
+  IDLE_TIMEOUT: "300s"
+  READ_TIMEOUT: "30s"
+  WRITE_TIMEOUT: "30s"
+
+  # Security Configuration
+  SECURE_COOKIES: "true"
+  HTTPS_ONLY: "true"
+  HSTS_ENABLED: "true"
+  CSP_ENABLED: "true"
+  RATE_LIMIT_ENABLED: "true"
+  RATE_LIMIT_RPS: "1000"
+
+  # Database Configuration
+  DB_HOST: "postgres-prod-service"
+  DB_PORT: "5432"
+  DB_NAME: "reciprocal_clubs_prod"
+  DB_USERNAME: "app_user"
+  DB_MAX_CONNECTIONS: "100"
+  DB_MAX_IDLE_CONNECTIONS: "25"
+  DB_CONNECTION_LIFETIME: "300s"
+  DB_SSL_MODE: "require"
+
+  # Redis Configuration
+  REDIS_HOST: "redis-prod-service"
+  REDIS_PORT: "6379"
+  REDIS_MAX_CONNECTIONS: "100"
+  REDIS_CONNECTION_TIMEOUT: "5s"
+  REDIS_READ_TIMEOUT: "3s"
+  REDIS_WRITE_TIMEOUT: "3s"
+  REDIS_POOL_TIMEOUT: "4s"
+
+  # NATS Configuration
+  NATS_URL: "nats://nats-prod-service:4222"
+  NATS_CLUSTER_NAME: "reciprocal-clubs-prod"
+  NATS_MAX_RECONNECTS: "10"
+  NATS_RECONNECT_WAIT: "2s"
+
+  # Hanko Authentication Configuration
+  HANKO_BASE_URL: "https://auth.reciprocal-clubs.com"
+  HANKO_API_URL: "https://api.reciprocal-clubs.com/auth"
+  MFA_ISSUER: "Reciprocal Clubs"
+
+  # CORS Configuration (Production)
+  CORS_ALLOWED_ORIGINS: "https://reciprocal-clubs.com,https://app.reciprocal-clubs.com,https://admin.reciprocal-clubs.com"
+  CORS_ALLOWED_METHODS: "GET,POST,PUT,DELETE,OPTIONS"
+  CORS_ALLOWED_HEADERS: "Content-Type,Authorization,X-Requested-With"
+  CORS_MAX_AGE: "86400"
+
+  # Service Discovery (Production URLs)
+  API_GATEWAY_URL: "https://api.reciprocal-clubs.com"
+  AUTH_SERVICE_URL: "http://auth-service-prod:8081"
+  MEMBER_SERVICE_URL: "http://member-service-prod:8082"
+  RECIPROCAL_SERVICE_URL: "http://reciprocal-service-prod:8083"
+  BLOCKCHAIN_SERVICE_URL: "http://blockchain-service-prod:8084"
+  NOTIFICATION_SERVICE_URL: "http://notification-service-prod:8085"
+  ANALYTICS_SERVICE_URL: "http://analytics-service-prod:8086"
+  GOVERNANCE_SERVICE_URL: "http://governance-service-prod:8087"
+
+  # Monitoring and Observability
+  METRICS_ENABLED: "true"
+  METRICS_PORT: "8080"
+  TRACING_ENABLED: "true"
+  JAEGER_ENDPOINT: "http://jaeger-collector.monitoring:14268/api/traces"
+  PROMETHEUS_METRICS_PATH: "/metrics"
+
+  # Health Check Configuration
+  HEALTH_CHECK_PATH: "/health"
+  READINESS_CHECK_PATH: "/ready"
+  LIVENESS_CHECK_PATH: "/live"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-prod-config
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    environment: production
+data:
+  POSTGRES_DB: "reciprocal_clubs_prod"
+  POSTGRES_USER: "postgres"
+
+  # PostgreSQL Production Configuration
+  postgresql.conf: |
+    # ============================================================================
+    # PostgreSQL Production Configuration
+    # ============================================================================
+
+    # Connection Settings
+    listen_addresses = '*'
+    port = 5432
+    max_connections = 200
+    superuser_reserved_connections = 3
+
+    # Memory Settings (optimized for 4GB RAM)
+    shared_buffers = 1GB
+    effective_cache_size = 3GB
+    work_mem = 16MB
+    maintenance_work_mem = 512MB
+
+    # WAL Settings
+    wal_level = replica
+    max_wal_size = 2GB
+    min_wal_size = 1GB
+    checkpoint_completion_target = 0.9
+    wal_buffers = 16MB
+
+    # Query Planner
+    random_page_cost = 1.1
+    effective_io_concurrency = 200
+
+    # Logging
+    logging_collector = on
+    log_directory = 'pg_log'
+    log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+    log_truncate_on_rotation = on
+    log_rotation_age = 1d
+    log_rotation_size = 100MB
+    log_min_duration_statement = 1000
+    log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+    log_checkpoints = on
+    log_connections = on
+    log_disconnections = on
+    log_lock_waits = on
+    log_temp_files = 0
+
+    # Performance
+    checkpoint_timeout = 15min
+    max_worker_processes = 8
+    max_parallel_workers_per_gather = 4
+    max_parallel_workers = 8
+
+    # Security
+    ssl = on
+    ssl_cert_file = '/etc/ssl/certs/server.crt'
+    ssl_key_file = '/etc/ssl/private/server.key'
+
+  init-prod-db.sql: |
+    -- ============================================================================
+    -- Production Database Initialization
+    -- ============================================================================
+
+    -- Create application databases
+    CREATE DATABASE IF NOT EXISTS auth_service_prod;
+    CREATE DATABASE IF NOT EXISTS member_service_prod;
+    CREATE DATABASE IF NOT EXISTS reciprocal_service_prod;
+    CREATE DATABASE IF NOT EXISTS blockchain_service_prod;
+    CREATE DATABASE IF NOT EXISTS notification_service_prod;
+    CREATE DATABASE IF NOT EXISTS analytics_service_prod;
+    CREATE DATABASE IF NOT EXISTS governance_service_prod;
+
+    -- Create application user with limited privileges
+    CREATE USER IF NOT EXISTS 'app_user'@'%' IDENTIFIED BY 'CHANGE_IN_PRODUCTION';
+
+    -- Grant appropriate permissions to application user
+    GRANT CONNECT, CREATE, USAGE ON auth_service_prod TO app_user;
+    GRANT CONNECT, CREATE, USAGE ON member_service_prod TO app_user;
+    GRANT CONNECT, CREATE, USAGE ON reciprocal_service_prod TO app_user;
+    GRANT CONNECT, CREATE, USAGE ON blockchain_service_prod TO app_user;
+    GRANT CONNECT, CREATE, USAGE ON notification_service_prod TO app_user;
+    GRANT CONNECT, CREATE, USAGE ON analytics_service_prod TO app_user;
+    GRANT CONNECT, CREATE, USAGE ON governance_service_prod TO app_user;
+
+    -- Create read-only user for analytics and reporting
+    CREATE USER IF NOT EXISTS 'readonly_user'@'%' IDENTIFIED BY 'CHANGE_IN_PRODUCTION';
+    GRANT SELECT ON ALL TABLES IN SCHEMA public TO readonly_user;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO readonly_user;
+
+    -- Create monitoring user
+    CREATE USER IF NOT EXISTS 'monitoring'@'%' IDENTIFIED BY 'CHANGE_IN_PRODUCTION';
+    GRANT pg_monitor TO monitoring;
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-prod-config
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cache
+    environment: production
+data:
+  redis.conf: |
+    # ============================================================================
+    # Redis Production Configuration
+    # ============================================================================
+
+    # Network
+    bind 0.0.0.0
+    port 6379
+    tcp-backlog 511
+    timeout 300
+    tcp-keepalive 300
+
+    # General
+    daemonize no
+    pidfile /var/run/redis_6379.pid
+    loglevel notice
+    logfile ""
+    databases 16
+
+    # Snapshotting
+    save 900 1
+    save 300 10
+    save 60 10000
+    stop-writes-on-bgsave-error yes
+    rdbcompression yes
+    rdbchecksum yes
+    dbfilename dump.rdb
+    dir /data
+
+    # Replication
+    replica-serve-stale-data yes
+    replica-read-only yes
+    repl-diskless-sync no
+    repl-diskless-sync-delay 5
+    repl-ping-replica-period 10
+    repl-timeout 60
+
+    # Security
+    requirepass CHANGE_IN_PRODUCTION
+    rename-command FLUSHDB ""
+    rename-command FLUSHALL ""
+    rename-command EVAL ""
+    rename-command DEBUG ""
+    rename-command CONFIG "CONFIG_b3b0a8b4c5d6e7f8"
+
+    # Memory Management
+    maxmemory 4gb
+    maxmemory-policy allkeys-lru
+    maxmemory-samples 5
+
+    # Lazy Freeing
+    lazyfree-lazy-eviction yes
+    lazyfree-lazy-expire yes
+    lazyfree-lazy-server-del yes
+    replica-lazy-flush yes
+
+    # Append Only File
+    appendonly yes
+    appendfilename "appendonly.aof"
+    appendfsync everysec
+    no-appendfsync-on-rewrite no
+    auto-aof-rewrite-percentage 100
+    auto-aof-rewrite-min-size 64mb
+    aof-load-truncated yes
+    aof-use-rdb-preamble yes
+
+    # Lua Scripting
+    lua-time-limit 5000
+
+    # Slow Log
+    slowlog-log-slower-than 10000
+    slowlog-max-len 128
+
+    # Client Output Buffer Limits
+    client-output-buffer-limit normal 0 0 0
+    client-output-buffer-limit replica 256mb 64mb 60
+    client-output-buffer-limit pubsub 32mb 8mb 60
+
+    # Client Query Buffer
+    client-query-buffer-limit 1gb
+
+    # Protocol Limits
+    proto-max-bulk-len 512mb
+
+    # Frequency
+    hz 10
+
+    # Background Saving
+    rdb-save-incremental-fsync yes
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nats-prod-config
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: nats
+    app.kubernetes.io/component: messaging
+    environment: production
+data:
+  nats.conf: |
+    # ============================================================================
+    # NATS Production Configuration
+    # ============================================================================
+
+    # Server identity
+    server_name: nats-prod
+
+    # Network
+    host: 0.0.0.0
+    port: 4222
+    http_port: 8222
+
+    # TLS Configuration
+    tls {
+      cert_file: "/etc/nats/certs/server.crt"
+      key_file: "/etc/nats/certs/server.key"
+      ca_file: "/etc/nats/certs/ca.crt"
+      timeout: 3
+      verify: true
+    }
+
+    # Authentication
+    authorization {
+      users = [
+        {
+          user: "app_user"
+          password: "$2a$11$..."  # bcrypt hash - CHANGE IN PRODUCTION
+          permissions: {
+            publish: {
+              allow: ["app.>", "events.>", "notifications.>"]
+            }
+            subscribe: {
+              allow: ["app.>", "events.>", "notifications.>", "system.>"]
+            }
+          }
+        }
+        {
+          user: "monitoring"
+          password: "$2a$11$..."  # bcrypt hash - CHANGE IN PRODUCTION
+          permissions: {
+            publish: {
+              deny: [">"]
+            }
+            subscribe: {
+              allow: ["$SYS.>"]
+            }
+          }
+        }
+      ]
+    }
+
+    # JetStream for persistence
+    jetstream {
+      store_dir: "/data/jetstream"
+      max_memory_store: 2GB
+      max_file_store: 10GB
+
+      # Limits
+      max_outstanding_catchup: 1024
+    }
+
+    # Clustering configuration
+    cluster {
+      name: reciprocal-clubs-prod
+      host: 0.0.0.0
+      port: 6222
+
+      # Routes to other nodes
+      routes: [
+        nats://nats-prod-0.nats-prod-headless:6222
+        nats://nats-prod-1.nats-prod-headless:6222
+        nats://nats-prod-2.nats-prod-headless:6222
+      ]
+
+      # Authentication for routes
+      authorization {
+        user: cluster_user
+        password: "CHANGE_IN_PRODUCTION"
+        timeout: 2
+      }
+
+      # TLS for cluster communication
+      tls {
+        cert_file: "/etc/nats/cluster-certs/server.crt"
+        key_file: "/etc/nats/cluster-certs/server.key"
+        ca_file: "/etc/nats/cluster-certs/ca.crt"
+        timeout: 3
+      }
+    }
+
+    # Monitoring
+    http: 8222
+    server_tags: ["production", "kubernetes"]
+
+    # Limits
+    max_connections: 64000
+    max_subscriptions: 0
+    max_payload: 1048576  # 1MB
+    max_pending: 67108864  # 64MB
+    max_control_line: 4096
+
+    # Timeouts
+    ping_interval: 2m
+    ping_max: 2
+    write_deadline: 10s
+
+    # Logging
+    debug: false
+    trace: false
+    logtime: true
+    log_size_limit: 100MB
+    max_traced_msg_len: 32768
+
+    # System Account (for monitoring)
+    system_account: SYS
+
+    # Performance
+    no_auth_user: "anonymous"
+
+    # Operator mode (if using)
+    # operator: "/etc/nats/operator.jwt"
+    # resolver: MEMORY
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hanko-prod-config
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: hanko
+    app.kubernetes.io/component: authentication
+    environment: production
+data:
+  config.yaml: |
+    # ============================================================================
+    # Hanko Production Configuration
+    # ============================================================================
+
+    server:
+      public:
+        address: 0.0.0.0:8000
+        cors:
+          allow_origins:
+            - "https://reciprocal-clubs.com"
+            - "https://app.reciprocal-clubs.com"
+            - "https://admin.reciprocal-clubs.com"
+          allow_headers:
+            - "Content-Type"
+            - "Authorization"
+            - "X-Requested-With"
+          allow_methods:
+            - "GET"
+            - "POST"
+            - "PUT"
+            - "DELETE"
+            - "OPTIONS"
+          max_age: 86400
+
+        # TLS Configuration
+        tls:
+          enabled: true
+          cert_file: "/etc/hanko/certs/server.crt"
+          key_file: "/etc/hanko/certs/server.key"
+
+      admin:
+        address: 0.0.0.0:8001
+        tls:
+          enabled: true
+          cert_file: "/etc/hanko/certs/admin.crt"
+          key_file: "/etc/hanko/certs/admin.key"
+
+    database:
+      host: hanko-postgres-prod-service
+      port: 5432
+      database: hanko_prod
+      user: hanko_user
+      password: "CHANGE_IN_PRODUCTION"
+
+      # Connection pool settings
+      max_open_conns: 20
+      max_idle_conns: 10
+      conn_max_lifetime: 300s
+
+      # SSL configuration
+      ssl_mode: require
+      ssl_root_cert: "/etc/hanko/certs/ca.crt"
+
+    secrets:
+      keys:
+        - "production-secret-key-32-chars-minimum-length"  # CHANGE IN PRODUCTION
+
+    service:
+      name: "Reciprocal Clubs"
+      url: "https://reciprocal-clubs.com"
+
+    password:
+      enabled: true
+      min_length: 8
+
+    emails:
+      require_verification: true
+      max_num_of_addresses: 5
+
+    webauthn:
+      relying_party:
+        id: "reciprocal-clubs.com"
+        display_name: "Reciprocal Clubs"
+        origins:
+          - "https://reciprocal-clubs.com"
+          - "https://app.reciprocal-clubs.com"
+
+    session:
+      lifespan: 24h
+      refresh_after: 1h
+
+    rate_limiter:
+      enabled: true
+      store: redis
+      redis_config:
+        address: "redis-prod-service:6379"
+        password: "CHANGE_IN_PRODUCTION"
+
+    log:
+      level: info
+
+    # Audit logging
+    audit_log:
+      console_output:
+        enabled: true
+        output: stdout
+      storage:
+        enabled: true
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: monitoring-prod-config
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: monitoring
+    app.kubernetes.io/component: configuration
+    environment: production
+data:
+  # Prometheus scrape configs
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      external_labels:
+        cluster: 'reciprocal-clubs-prod'
+        environment: 'production'
+
+    scrape_configs:
+    - job_name: 'kubernetes-apiservers'
+      kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names:
+          - default
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: default;kubernetes;https
+
+    - job_name: 'reciprocal-clubs-services'
+      kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names:
+          - reciprocal-clubs-prod
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
+      - action: labelmap
+        regex: __meta_kubernetes_service_label_(.+)
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_service_name]
+        action: replace
+        target_label: kubernetes_name
+
+  # Grafana datasources
+  grafana-datasources.yaml: |
+    apiVersion: 1
+    datasources:
+    - name: Prometheus
+      type: prometheus
+      url: http://prometheus-service:9090
+      access: proxy
+      isDefault: true
+    - name: Jaeger
+      type: jaeger
+      url: http://jaeger-query:16686
+      access: proxy

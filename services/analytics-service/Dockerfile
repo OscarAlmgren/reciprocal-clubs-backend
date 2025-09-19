@@ -1,63 +1,90 @@
 # =========================================================================
+# Multi-stage Dockerfile for Analytics Service
+# =========================================================================
+
+# =========================================================================
 # Stage 1: Build Stage
 # =========================================================================
-# Use the requested Go version on a minimal Alpine base.
 FROM golang:1.25-alpine AS builder
 
-# Set the working directory within the container.
-WORKDIR /app
+# Install build dependencies
+RUN apk add --no-cache \
+    git \
+    ca-certificates \
+    tzdata \
+    build-base \
+    protobuf \
+    protobuf-dev
 
-# Install build dependencies.
-# 'git' is often needed to fetch Go modules from version control systems.
-RUN apk add --no-cache git
+# Set working directory to project root
+WORKDIR /build
 
-# Copy only the necessary files to download dependencies.
-# This step is cached and only re-runs if the module files change.
-COPY go.mod go.sum go.work* ./
-RUN go mod download
+# Create non-root user for build
+RUN adduser -D -g '' appuser
 
-# Copy the rest of the application source code.
+# Copy entire project for workspace support
 COPY . .
 
-# Compile the application into a statically linked binary.
-# - CGO_ENABLED=0 ensures a static build without C library dependencies.
-# -ldflags="-w -s" strips debug symbols, significantly reducing the binary size.
-RUN CGO_ENABLED=0 go build \
-    -ldflags='-w -s' \
-    -o /bin/analytics-service \
-    ./services/analytics-service/cmd/main.go
+# Install protobuf tools if needed
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
+    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
+# Change to service directory
+WORKDIR /build/services/analytics-service
+
+# Download dependencies (workspace-aware)
+RUN go mod download || echo "Some dependencies may be missing, continuing..."
+
+# Generate protobuf code if proto files exist
+RUN if [ -d "api/proto" ] || [ -d "proto" ]; then \
+        find . -name "*.proto" -exec protoc \
+            --go_out=. \
+            --go_opt=paths=source_relative \
+            --go-grpc_out=. \
+            --go-grpc_opt=paths=source_relative \
+            --proto_path=. \
+            {} + 2>/dev/null || true \
+    ; fi
+
+# Build the application with optimizations
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags='-w -s -extldflags "-static"' \
+    -a -installsuffix cgo \
+    -o analytics-service \
+    cmd/main.go
 
 # =========================================================================
 # Stage 2: Final Stage
 # =========================================================================
-# Use a minimal, secure base image.
 FROM alpine:latest
 
-# Install essential packages.
-# - ca-certificates: For making secure HTTPS connections.
-# - tzdata: For time zone information.
-# - curl: A lightweight tool for the health check.
-RUN apk add --no-cache ca-certificates tzdata curl
+# Install runtime dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    tzdata \
+    curl
 
-# Create a dedicated, non-root user and group for the application.
-# Using static IDs (e.g., 1001) is a good practice for predictable permissions.
+# Create non-root user with consistent UID/GID
 RUN addgroup -S appgroup -g 1001 && \
     adduser -S appuser -u 1001 -G appgroup
 
-# Set the application's working directory.
+# Set working directory
 WORKDIR /app
 
-# Copy the compiled binary from the builder stage and set ownership in one step.
-COPY --from=builder --chown=appuser:appgroup /bin/analytics-service .
+# Copy binary from builder stage with proper ownership
+COPY --from=builder --chown=appuser:appgroup /build/services/analytics-service/analytics-service ./
 
-# Switch to the non-root user for security.
+# Switch to non-root user
 USER appuser
 
-# Expose the application's ports.
+# Expose service ports (HTTP and gRPC)
 EXPOSE 8086 9096
 
-# Define metadata for the container image.
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8086/health || exit 1
+
+# Metadata labels
 LABEL maintainer="Analytics Service Team"
 LABEL version="1.0.0"
 LABEL description="Analytics Service for Reciprocal Clubs Backend"
@@ -66,10 +93,5 @@ LABEL org.opencontainers.image.documentation="https://docs.reciprocal-clubs.com/
 LABEL org.opencontainers.image.vendor="Reciprocal Clubs"
 LABEL org.opencontainers.image.licenses="MIT"
 
-# Add a health check to ensure the service is responsive.
-# The '-f' or '--fail' flag in curl causes it to return a non-zero exit code on server errors (HTTP 4xx or 5xx).
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:8086/health || exit 1
-
-# Set the command to run when the container starts.
+# Set entrypoint
 ENTRYPOINT ["./analytics-service"]

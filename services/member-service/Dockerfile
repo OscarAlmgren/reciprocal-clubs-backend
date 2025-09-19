@@ -1,52 +1,97 @@
-# Build stage
+# =========================================================================
+# Multi-stage Dockerfile for Member Service
+# =========================================================================
+
+# =========================================================================
+# Stage 1: Build Stage
+# =========================================================================
 FROM golang:1.25-alpine AS builder
 
 # Install build dependencies
-RUN apk add --no-cache git ca-certificates tzdata
+RUN apk add --no-cache \
+    git \
+    ca-certificates \
+    tzdata \
+    build-base \
+    protobuf \
+    protobuf-dev
 
-# Set working directory
-WORKDIR /app
+# Set working directory to project root
+WORKDIR /build
 
-# Copy go.mod and go.sum files
-COPY go.work go.work.sum ./
-COPY services/member-service/go.mod services/member-service/go.sum ./services/member-service/
-COPY pkg/ ./pkg/
+# Create non-root user for build
+RUN adduser -D -g '' appuser
 
-# Download dependencies
-WORKDIR /app/services/member-service
-RUN go mod download
+# Copy entire project for workspace support
+COPY . .
 
-# Copy source code
-COPY services/member-service/ ./
+# Install protobuf tools if needed
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
+    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
-# Build the application
+# Change to service directory
+WORKDIR /build/services/member-service
+
+# Download dependencies (workspace-aware)
+RUN go mod download || echo "Some dependencies may be missing, continuing..."
+
+# Generate protobuf code if proto files exist
+RUN if [ -d "api/proto" ] || [ -d "proto" ]; then \
+        find . -name "*.proto" -exec protoc \
+            --go_out=. \
+            --go_opt=paths=source_relative \
+            --go-grpc_out=. \
+            --go-grpc_opt=paths=source_relative \
+            --proto_path=. \
+            {} + 2>/dev/null || true \
+    ; fi
+
+# Build the application with optimizations
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags='-w -s -extldflags "-static"' \
     -a -installsuffix cgo \
     -o member-service \
-    ./cmd/main.go
+    cmd/main.go
 
-# Final stage
-FROM scratch
+# =========================================================================
+# Stage 2: Final Stage
+# =========================================================================
+FROM alpine:latest
 
-# Copy CA certificates
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+# Install runtime dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    tzdata \
+    curl
 
-# Copy timezone data
-COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+# Create non-root user with consistent UID/GID
+RUN addgroup -S appgroup -g 1001 && \
+    adduser -S appuser -u 1001 -G appgroup
 
-# Copy the binary
-COPY --from=builder /app/services/member-service/member-service /member-service
+# Set working directory
+WORKDIR /app
 
-# Set environment
-ENV TZ=UTC
+# Copy binary from builder stage with proper ownership
+COPY --from=builder --chown=appuser:appgroup /build/services/member-service/member-service ./
 
-# Expose ports
+# Switch to non-root user
+USER appuser
+
+# Expose service ports (HTTP and gRPC)
 EXPOSE 8082 9092
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD ["/member-service", "healthcheck"]
+    CMD curl -f http://localhost:8082/health || exit 1
 
-# Run the application
-ENTRYPOINT ["/member-service"]
+# Metadata labels
+LABEL maintainer="Member Service Team"
+LABEL version="1.0.0"
+LABEL description="Member Service for Reciprocal Clubs Backend"
+LABEL org.opencontainers.image.source="https://github.com/reciprocal-clubs/backend"
+LABEL org.opencontainers.image.documentation="https://docs.reciprocal-clubs.com/member-service"
+LABEL org.opencontainers.image.vendor="Reciprocal Clubs"
+LABEL org.opencontainers.image.licenses="MIT"
+
+# Set entrypoint
+ENTRYPOINT ["./member-service"]

@@ -1,0 +1,31 @@
+# =========================================================================
+# Podman Quadlet - Development Network
+# =========================================================================
+# Network configuration for development environment
+
+[Unit]
+Description=Reciprocal Clubs Development Network
+Documentation=https://docs.reciprocal-clubs.com/deployment
+
+[Network]
+NetworkName=reciprocal-clubs-dev
+Driver=bridge
+Subnet=172.20.0.0/16
+Gateway=172.20.0.1
+
+# Development network settings
+Label=environment=development
+Label=project=reciprocal-clubs
+Label=network=dev
+
+# DNS Configuration
+DNS=172.20.0.1
+DNS=8.8.8.8
+DNS=8.8.4.4
+
+# Enable IP forwarding for development
+DisableDNS=false
+Internal=false
+
+[Install]
+WantedBy=multi-user.target default.target

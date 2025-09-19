@@ -1,0 +1,963 @@
+# =========================================================================
+# Production Infrastructure Services with High Availability
+# =========================================================================
+
+# =========================================================================
+# PostgreSQL Production Setup with HA
+# =========================================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-prod-pvc-0
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    environment: production
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: fast-ssd
+  resources:
+    requests:
+      storage: 500Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-prod-pvc-1
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    environment: production
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: fast-ssd
+  resources:
+    requests:
+      storage: 500Gi
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-prod
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/version: "15.4"
+    environment: production
+spec:
+  serviceName: postgres-prod-headless
+  replicas: 2
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+      environment: production
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/component: database
+        environment: production
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9187"
+        prometheus.io/path: "/metrics"
+    spec:
+      priorityClassName: reciprocal-clubs-prod-priority
+      securityContext:
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        fsGroupChangePolicy: "OnRootMismatch"
+      containers:
+      - name: postgres
+        image: postgres:15.4-alpine
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: postgres
+          containerPort: 5432
+          protocol: TCP
+        env:
+        - name: POSTGRES_DB
+          valueFrom:
+            configMapKeyRef:
+              name: postgres-prod-config
+              key: POSTGRES_DB
+        - name: POSTGRES_USER
+          valueFrom:
+            configMapKeyRef:
+              name: postgres-prod-config
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-prod-secret
+              key: POSTGRES_PASSWORD
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        - name: POSTGRES_INITDB_ARGS
+          value: "--auth-host=md5"
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        - name: postgres-config
+          mountPath: /etc/postgresql/postgresql.conf
+          subPath: postgresql.conf
+        - name: postgres-init
+          mountPath: /docker-entrypoint-initdb.d/
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - postgres
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - postgres
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          readOnlyRootFilesystem: false
+
+      # PostgreSQL Exporter for Monitoring
+      - name: postgres-exporter
+        image: prometheuscommunity/postgres-exporter:v0.13.2
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: metrics
+          containerPort: 9187
+          protocol: TCP
+        env:
+        - name: DATA_SOURCE_NAME
+          value: "postgresql://postgres:$(POSTGRES_PASSWORD)@localhost:5432/postgres?sslmode=disable"
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-prod-secret
+              key: POSTGRES_PASSWORD
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          readOnlyRootFilesystem: true
+
+      volumes:
+      - name: postgres-config
+        configMap:
+          name: postgres-prod-config
+      - name: postgres-init
+        configMap:
+          name: postgres-prod-config
+          items:
+          - key: init-prod-db.sql
+            path: init-db.sql
+            mode: 0755
+
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: postgres
+              topologyKey: kubernetes.io/hostname
+
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-storage
+      labels:
+        app.kubernetes.io/name: postgres
+        environment: production
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: fast-ssd
+      resources:
+        requests:
+          storage: 500Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-prod-service
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    environment: production
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9187"
+spec:
+  selector:
+    app.kubernetes.io/name: postgres
+    environment: production
+  ports:
+  - name: postgres
+    port: 5432
+    targetPort: 5432
+    protocol: TCP
+  - name: metrics
+    port: 9187
+    targetPort: 9187
+    protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-prod-headless
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    environment: production
+spec:
+  selector:
+    app.kubernetes.io/name: postgres
+    environment: production
+  ports:
+  - name: postgres
+    port: 5432
+    targetPort: 5432
+    protocol: TCP
+  clusterIP: None
+
+---
+# =========================================================================
+# Redis Production Setup with HA (Sentinel)
+# =========================================================================
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-prod
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cache
+    app.kubernetes.io/version: "7.2-alpine"
+    environment: production
+spec:
+  serviceName: redis-prod-headless
+  replicas: 3
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+      environment: production
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redis
+        app.kubernetes.io/component: cache
+        environment: production
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9121"
+        prometheus.io/path: "/metrics"
+    spec:
+      priorityClassName: reciprocal-clubs-prod-priority
+      securityContext:
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+      containers:
+      - name: redis
+        image: redis:7.2-alpine
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: redis
+          containerPort: 6379
+          protocol: TCP
+        command:
+        - redis-server
+        - /etc/redis/redis.conf
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-prod-secret
+              key: REDIS_PASSWORD
+        volumeMounts:
+        - name: redis-storage
+          mountPath: /data
+        - name: redis-config
+          mountPath: /etc/redis/
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "1000m"
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 1
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          readOnlyRootFilesystem: false
+
+      # Redis Exporter for Monitoring
+      - name: redis-exporter
+        image: oliver006/redis_exporter:v1.54.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: metrics
+          containerPort: 9121
+          protocol: TCP
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-prod-secret
+              key: REDIS_PASSWORD
+        - name: REDIS_ADDR
+          value: "redis://localhost:6379"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          readOnlyRootFilesystem: true
+
+      volumes:
+      - name: redis-config
+        configMap:
+          name: redis-prod-config
+
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: redis
+              topologyKey: kubernetes.io/hostname
+
+  volumeClaimTemplates:
+  - metadata:
+      name: redis-storage
+      labels:
+        app.kubernetes.io/name: redis
+        environment: production
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: fast-ssd
+      resources:
+        requests:
+          storage: 100Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-prod-service
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cache
+    environment: production
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9121"
+spec:
+  selector:
+    app.kubernetes.io/name: redis
+    environment: production
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: 6379
+    protocol: TCP
+  - name: metrics
+    port: 9121
+    targetPort: 9121
+    protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-prod-headless
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cache
+    environment: production
+spec:
+  selector:
+    app.kubernetes.io/name: redis
+    environment: production
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: 6379
+    protocol: TCP
+  clusterIP: None
+
+---
+# =========================================================================
+# NATS Production Setup with JetStream Clustering
+# =========================================================================
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nats-prod
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: nats
+    app.kubernetes.io/component: messaging
+    app.kubernetes.io/version: "2.10.4-alpine"
+    environment: production
+spec:
+  serviceName: nats-prod-headless
+  replicas: 3
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nats
+      environment: production
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nats
+        app.kubernetes.io/component: messaging
+        environment: production
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "7777"
+        prometheus.io/path: "/metrics"
+    spec:
+      priorityClassName: reciprocal-clubs-prod-priority
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: nats
+        image: nats:2.10.4-alpine
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: client
+          containerPort: 4222
+          protocol: TCP
+        - name: cluster
+          containerPort: 6222
+          protocol: TCP
+        - name: monitor
+          containerPort: 8222
+          protocol: TCP
+        command:
+        - nats-server
+        - --config
+        - /etc/nats/nats.conf
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: CLUSTER_ADVERTISE
+          value: $(POD_NAME).nats-prod-headless.$(POD_NAMESPACE).svc.cluster.local
+        volumeMounts:
+        - name: nats-storage
+          mountPath: /data
+        - name: nats-config
+          mountPath: /etc/nats/
+        - name: nats-certs
+          mountPath: /etc/nats/certs
+          readOnly: true
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8222
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8222
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          readOnlyRootFilesystem: false
+
+      # NATS Exporter for Monitoring
+      - name: nats-exporter
+        image: natsio/prometheus-nats-exporter:0.12.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: metrics
+          containerPort: 7777
+          protocol: TCP
+        args:
+        - -connz
+        - -routez
+        - -subz
+        - -varz
+        - -prefix=nats
+        - -use_internal_server_id
+        - -jsz=all
+        - http://localhost:8222
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          readOnlyRootFilesystem: true
+
+      volumes:
+      - name: nats-config
+        configMap:
+          name: nats-prod-config
+      - name: nats-certs
+        secret:
+          secretName: nats-tls-secret
+
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: nats
+              topologyKey: kubernetes.io/hostname
+
+  volumeClaimTemplates:
+  - metadata:
+      name: nats-storage
+      labels:
+        app.kubernetes.io/name: nats
+        environment: production
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: fast-ssd
+      resources:
+        requests:
+          storage: 50Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats-prod-service
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: nats
+    app.kubernetes.io/component: messaging
+    environment: production
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "7777"
+spec:
+  selector:
+    app.kubernetes.io/name: nats
+    environment: production
+  ports:
+  - name: client
+    port: 4222
+    targetPort: 4222
+    protocol: TCP
+  - name: monitor
+    port: 8222
+    targetPort: 8222
+    protocol: TCP
+  - name: metrics
+    port: 7777
+    targetPort: 7777
+    protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats-prod-headless
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: nats
+    app.kubernetes.io/component: messaging
+    environment: production
+spec:
+  selector:
+    app.kubernetes.io/name: nats
+    environment: production
+  ports:
+  - name: client
+    port: 4222
+    targetPort: 4222
+    protocol: TCP
+  - name: cluster
+    port: 6222
+    targetPort: 6222
+    protocol: TCP
+  - name: monitor
+    port: 8222
+    targetPort: 8222
+    protocol: TCP
+  clusterIP: None
+
+---
+# =========================================================================
+# Hanko Production Setup with HA
+# =========================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hanko-prod
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: hanko
+    app.kubernetes.io/component: authentication
+    app.kubernetes.io/version: "0.20.1"
+    environment: production
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hanko
+      environment: production
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: hanko
+        app.kubernetes.io/component: authentication
+        environment: production
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      priorityClassName: reciprocal-clubs-prod-priority
+      securityContext:
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      containers:
+      - name: hanko
+        image: ghcr.io/teamhanko/hanko:0.20.1
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: public
+          containerPort: 8000
+          protocol: TCP
+        - name: admin
+          containerPort: 8001
+          protocol: TCP
+        env:
+        - name: CONFIG_FILE
+          value: /etc/hanko/config.yaml
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: hanko-prod-secret
+              key: DATABASE_PASSWORD
+        - name: HANKO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: hanko-prod-secret
+              key: HANKO_SECRET_KEY
+        volumeMounts:
+        - name: hanko-config
+          mountPath: /etc/hanko/
+        - name: hanko-certs
+          mountPath: /etc/hanko/certs
+          readOnly: true
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /.well-known/health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /.well-known/health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          readOnlyRootFilesystem: true
+
+      volumes:
+      - name: hanko-config
+        configMap:
+          name: hanko-prod-config
+      - name: hanko-certs
+        secret:
+          secretName: hanko-tls-secret
+
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: hanko
+              topologyKey: kubernetes.io/hostname
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hanko-prod-service
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: hanko
+    app.kubernetes.io/component: authentication
+    environment: production
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+spec:
+  selector:
+    app.kubernetes.io/name: hanko
+    environment: production
+  ports:
+  - name: public
+    port: 8000
+    targetPort: 8000
+    protocol: TCP
+  - name: admin
+    port: 8001
+    targetPort: 8001
+    protocol: TCP
+  type: ClusterIP
+
+---
+# =========================================================================
+# HorizontalPodAutoscaler for Infrastructure Services
+# =========================================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hanko-prod-hpa
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: hanko
+    app.kubernetes.io/component: autoscaler
+    environment: production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hanko-prod
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+
+---
+# =========================================================================
+# Pod Disruption Budgets for Infrastructure Services
+# =========================================================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: postgres-prod-pdb
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    environment: production
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+      environment: production
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: redis-prod-pdb
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cache
+    environment: production
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+      environment: production
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: nats-prod-pdb
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: nats
+    app.kubernetes.io/component: messaging
+    environment: production
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nats
+      environment: production
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: hanko-prod-pdb
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: hanko
+    app.kubernetes.io/component: authentication
+    environment: production
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hanko
+      environment: production

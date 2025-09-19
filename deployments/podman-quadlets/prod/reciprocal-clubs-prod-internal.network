@@ -1,0 +1,31 @@
+# =========================================================================
+# Podman Quadlet - Production Internal Network
+# =========================================================================
+# Secure internal network for production microservices communication
+
+[Unit]
+Description=Reciprocal Clubs Production Internal Network
+Documentation=https://docs.reciprocal-clubs.com/deployment
+PartOf=reciprocal-clubs-prod.target
+
+[Network]
+NetworkName=reciprocal-clubs-prod-internal
+Driver=bridge
+Subnet=10.88.0.0/16
+Gateway=10.88.0.1
+
+# Production network settings - Internal only
+Label=environment=production
+Label=project=reciprocal-clubs
+Label=network=internal
+Label=security=high
+
+# Security hardening
+Internal=true
+DisableDNS=false
+
+# Custom DNS for service discovery
+DNS=10.88.0.1
+
+[Install]
+WantedBy=multi-user.target reciprocal-clubs-prod.target

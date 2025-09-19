@@ -1,0 +1,818 @@
+# =========================================================================
+# Docker Compose - Production Environment
+# =========================================================================
+# This configuration is optimized for production deployment with:
+# - High availability and redundancy
+# - Security hardening
+# - Performance optimization
+# - Production-grade secrets management
+# - Health checks and monitoring
+# - Resource limits and scaling
+
+version: '3.8'
+
+networks:
+  reciprocal-clubs-prod:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16
+  reciprocal-clubs-internal:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.31.0.0/16
+
+volumes:
+  postgres_data_prod:
+  postgres_backup_prod:
+  nats_data_prod:
+  redis_data_prod:
+  fabric_peer_prod:
+  fabric_orderer_prod:
+  fabric_ca_prod:
+  prometheus_data_prod:
+  grafana_data_prod:
+  application_logs_prod:
+
+secrets:
+  postgres_password:
+    external: true
+  redis_password:
+    external: true
+  jwt_secret:
+    external: true
+  hanko_api_key:
+    external: true
+  smtp_password:
+    external: true
+
+services:
+  # =======================================================================
+  # Infrastructure Services
+  # =======================================================================
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: reciprocal-postgres-prod
+    environment:
+      POSTGRES_DB: reciprocal_clubs_prod
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    ports:
+      - "127.0.0.1:5432:5432"  # Bind to localhost only
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+      - postgres_backup_prod:/backup
+      - ./scripts/init-prod-db.sql:/docker-entrypoint-initdb.d/init-prod-db.sql
+    networks:
+      reciprocal-clubs-internal:
+        ipv4_address: 172.31.0.10
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+
+  # PostgreSQL Backup Service
+  postgres-backup:
+    image: postgres:15-alpine
+    container_name: reciprocal-postgres-backup-prod
+    environment:
+      PGUSER: postgres
+      POSTGRES_DB: reciprocal_clubs_prod
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - postgres_backup_prod:/backup
+      - ./scripts/backup-postgres.sh:/backup-postgres.sh
+    networks:
+      - reciprocal-clubs-internal
+    depends_on:
+      - postgres
+    command: |
+      sh -c "
+        while true; do
+          sleep 21600  # Backup every 6 hours
+          /backup-postgres.sh
+        done
+      "
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: reciprocal-redis-prod
+    command: >
+      redis-server
+      --appendonly yes
+      --requirepass "$(cat /run/secrets/redis_password)"
+      --maxmemory 2gb
+      --maxmemory-policy allkeys-lru
+    secrets:
+      - redis_password
+    ports:
+      - "127.0.0.1:6379:6379"  # Bind to localhost only
+    volumes:
+      - redis_data_prod:/data
+    networks:
+      reciprocal-clubs-internal:
+        ipv4_address: 172.31.0.11
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "$(cat /run/secrets/redis_password)", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: reciprocal-nats-prod
+    ports:
+      - "127.0.0.1:4222:4222"
+    expose:
+      - "6222"
+      - "8222"
+    command: >
+      --js
+      --sd /data
+      --cluster_name reciprocal-clubs-prod
+      --cluster nats://0.0.0.0:6222
+      --routes nats://0.0.0.0:6222
+      --http_port 8222
+      --max_payload 8MB
+      --max_connections 1000
+    volumes:
+      - nats_data_prod:/data
+    networks:
+      reciprocal-clubs-internal:
+        ipv4_address: 172.31.0.12
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # =======================================================================
+  # Hyperledger Fabric Components (Production)
+  # =======================================================================
+
+  fabric-ca:
+    image: hyperledger/fabric-ca:1.5
+    container_name: reciprocal-fabric-ca-prod
+    environment:
+      - FABRIC_CA_HOME=/etc/hyperledger/fabric-ca-server
+      - FABRIC_CA_SERVER_CA_NAME=ca-org1-prod
+      - FABRIC_CA_SERVER_TLS_ENABLED=true
+      - FABRIC_CA_SERVER_PORT=7054
+    expose:
+      - "7054"
+    command: sh -c 'fabric-ca-server start -b admin:adminpw'
+    volumes:
+      - fabric_ca_prod:/etc/hyperledger/fabric-ca-server
+      - ./fabric/prod:/etc/hyperledger/fabric-ca-server-config
+    networks:
+      reciprocal-clubs-internal:
+        ipv4_address: 172.31.0.20
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  fabric-orderer:
+    image: hyperledger/fabric-orderer:2.5
+    container_name: reciprocal-orderer-prod
+    environment:
+      - FABRIC_LOGGING_SPEC=INFO
+      - ORDERER_GENERAL_LISTENADDRESS=0.0.0.0
+      - ORDERER_GENERAL_LISTENPORT=7050
+      - ORDERER_GENERAL_GENESISMETHOD=file
+      - ORDERER_GENERAL_GENESISFILE=/var/hyperledger/orderer/orderer.genesis.block
+      - ORDERER_GENERAL_LOCALMSPID=OrdererMSP
+      - ORDERER_GENERAL_LOCALMSPDIR=/var/hyperledger/orderer/msp
+      - ORDERER_GENERAL_TLS_ENABLED=true
+      - ORDERER_GENERAL_TLS_PRIVATEKEY=/var/hyperledger/orderer/tls/server.key
+      - ORDERER_GENERAL_TLS_CERTIFICATE=/var/hyperledger/orderer/tls/server.crt
+      - ORDERER_GENERAL_TLS_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
+    working_dir: /opt/gopath/src/github.com/hyperledger/fabric
+    command: orderer
+    volumes:
+      - fabric_orderer_prod:/var/hyperledger/production/orderer
+      - ./fabric/prod/genesis.block:/var/hyperledger/orderer/orderer.genesis.block
+      - ./fabric/prod/crypto-config/ordererOrganizations/reciprocal-clubs.com/orderers/orderer.reciprocal-clubs.com/msp:/var/hyperledger/orderer/msp
+      - ./fabric/prod/crypto-config/ordererOrganizations/reciprocal-clubs.com/orderers/orderer.reciprocal-clubs.com/tls:/var/hyperledger/orderer/tls
+    expose:
+      - "7050"
+    networks:
+      reciprocal-clubs-internal:
+        ipv4_address: 172.31.0.21
+    depends_on:
+      - fabric-ca
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  fabric-peer:
+    image: hyperledger/fabric-peer:2.5
+    container_name: reciprocal-peer0-org1-prod
+    environment:
+      - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
+      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=reciprocal-clubs-backend_reciprocal-clubs-internal
+      - FABRIC_LOGGING_SPEC=INFO
+      - CORE_PEER_TLS_ENABLED=true
+      - CORE_PEER_GOSSIP_USELEADERELECTION=true
+      - CORE_PEER_GOSSIP_ORGLEADER=false
+      - CORE_PEER_PROFILE_ENABLED=false
+      - CORE_PEER_TLS_CERT_FILE=/etc/hyperledger/fabric/tls/server.crt
+      - CORE_PEER_TLS_KEY_FILE=/etc/hyperledger/fabric/tls/server.key
+      - CORE_PEER_TLS_ROOTCERT_FILE=/etc/hyperledger/fabric/tls/ca.crt
+      - CORE_PEER_ID=peer0.org1.reciprocal-clubs.com
+      - CORE_PEER_ADDRESS=peer0.org1.reciprocal-clubs.com:7051
+      - CORE_PEER_LISTENADDRESS=0.0.0.0:7051
+      - CORE_PEER_CHAINCODEADDRESS=peer0.org1.reciprocal-clubs.com:7052
+      - CORE_PEER_CHAINCODELISTENADDRESS=0.0.0.0:7052
+      - CORE_PEER_GOSSIP_BOOTSTRAP=peer0.org1.reciprocal-clubs.com:7051
+      - CORE_PEER_GOSSIP_EXTERNALENDPOINT=peer0.org1.reciprocal-clubs.com:7051
+      - CORE_PEER_LOCALMSPID=Org1MSP
+    working_dir: /opt/gopath/src/github.com/hyperledger/fabric/peer
+    command: peer node start
+    volumes:
+      - /var/run/docker.sock:/host/var/run/docker.sock
+      - fabric_peer_prod:/var/hyperledger/production
+      - ./fabric/prod/crypto-config/peerOrganizations/org1.reciprocal-clubs.com/peers/peer0.org1.reciprocal-clubs.com/msp:/etc/hyperledger/fabric/msp
+      - ./fabric/prod/crypto-config/peerOrganizations/org1.reciprocal-clubs.com/peers/peer0.org1.reciprocal-clubs.com/tls:/etc/hyperledger/fabric/tls
+    expose:
+      - "7051"
+      - "7052"
+    networks:
+      reciprocal-clubs-internal:
+        ipv4_address: 172.31.0.22
+    depends_on:
+      - fabric-orderer
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  # =======================================================================
+  # Authentication Services
+  # =======================================================================
+
+  hanko-postgres:
+    image: postgres:15-alpine
+    container_name: reciprocal-hanko-postgres-prod
+    environment:
+      POSTGRES_DB: hanko_prod
+      POSTGRES_USER: hanko
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - ./volumes/hanko-postgres-prod:/var/lib/postgresql/data
+    networks:
+      - reciprocal-clubs-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hanko"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  hanko-migrate:
+    image: teamhanko/hanko:latest
+    container_name: reciprocal-hanko-migrate-prod
+    volumes:
+      - ./config/hanko/config.prod.yaml:/etc/config/config.yaml
+    command: ["migrate", "up", "--config", "/etc/config/config.yaml"]
+    depends_on:
+      hanko-postgres:
+        condition: service_healthy
+    networks:
+      - reciprocal-clubs-internal
+    restart: on-failure
+
+  hanko:
+    image: teamhanko/hanko:latest
+    container_name: reciprocal-hanko-prod
+    expose:
+      - "8000"
+      - "8001"
+    volumes:
+      - ./config/hanko/config.prod.yaml:/etc/config/config.yaml
+    command: ["serve", "--config", "/etc/config/config.yaml", "all"]
+    environment:
+      - PASSWORD_ENABLED=true
+    networks:
+      reciprocal-clubs-internal:
+        ipv4_address: 172.31.0.30
+    depends_on:
+      hanko-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  # =======================================================================
+  # Application Services
+  # =======================================================================
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    container_name: reciprocal-api-gateway-prod
+    environment:
+      - APP_ENV=production
+      - API_GATEWAY_SERVICE_PORT=8080
+      - API_GATEWAY_SERVICE_GRPC_PORT=9080
+      - API_GATEWAY_DATABASE_HOST=postgres
+      - API_GATEWAY_DATABASE_PORT=5432
+      - API_GATEWAY_DATABASE_USERNAME=postgres
+      - API_GATEWAY_DATABASE_PASSWORD_FILE=/run/secrets/postgres_password
+      - API_GATEWAY_DATABASE_DATABASE=reciprocal_clubs_prod
+      - API_GATEWAY_NATS_URL=nats://nats:4222
+      - API_GATEWAY_REDIS_HOST=redis
+      - API_GATEWAY_REDIS_PORT=6379
+      - API_GATEWAY_AUTH_JWT_SECRET_FILE=/run/secrets/jwt_secret
+      - API_GATEWAY_CORS_ALLOWED_ORIGINS=https://app.reciprocal-clubs.com,https://admin.reciprocal-clubs.com
+      - API_GATEWAY_DEBUG=false
+      - API_GATEWAY_LOG_LEVEL=info
+    secrets:
+      - postgres_password
+      - jwt_secret
+    ports:
+      - "80:8080"
+      - "443:8080"  # Use reverse proxy for SSL termination
+    volumes:
+      - ./config/prod:/app/config:ro
+      - application_logs_prod:/app/logs
+    networks:
+      - reciprocal-clubs-prod
+      - reciprocal-clubs-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    environment:
+      - APP_ENV=production
+      - AUTH_SERVICE_SERVICE_PORT=8081
+      - AUTH_SERVICE_SERVICE_GRPC_PORT=9081
+      - AUTH_SERVICE_DATABASE_HOST=postgres
+      - AUTH_SERVICE_DATABASE_PORT=5432
+      - AUTH_SERVICE_DATABASE_USERNAME=postgres
+      - AUTH_SERVICE_DATABASE_PASSWORD_FILE=/run/secrets/postgres_password
+      - AUTH_SERVICE_DATABASE_DATABASE=auth_service
+      - AUTH_SERVICE_NATS_URL=nats://nats:4222
+      - AUTH_SERVICE_REDIS_HOST=redis
+      - AUTH_SERVICE_REDIS_PORT=6379
+      - AUTH_SERVICE_AUTH_JWT_SECRET_FILE=/run/secrets/jwt_secret
+      - AUTH_SERVICE_HANKO_BASE_URL=http://hanko:8000
+      - AUTH_SERVICE_HANKO_API_KEY_FILE=/run/secrets/hanko_api_key
+      - AUTH_SERVICE_MFA_ISSUER=Reciprocal Clubs
+      - AUTH_SERVICE_DEBUG=false
+      - AUTH_SERVICE_LOG_LEVEL=info
+    secrets:
+      - postgres_password
+      - jwt_secret
+      - hanko_api_key
+    expose:
+      - "8081"
+      - "9081"
+    volumes:
+      - ./config/prod:/app/config:ro
+      - application_logs_prod:/app/logs
+    networks:
+      - reciprocal-clubs-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      hanko:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  member-service:
+    build:
+      context: .
+      dockerfile: services/member-service/Dockerfile
+    environment:
+      - APP_ENV=production
+      - MEMBER_SERVICE_SERVICE_PORT=8082
+      - MEMBER_SERVICE_SERVICE_GRPC_PORT=9082
+      - MEMBER_SERVICE_DATABASE_HOST=postgres
+      - MEMBER_SERVICE_DATABASE_PORT=5432
+      - MEMBER_SERVICE_DATABASE_USERNAME=postgres
+      - MEMBER_SERVICE_DATABASE_PASSWORD_FILE=/run/secrets/postgres_password
+      - MEMBER_SERVICE_DATABASE_DATABASE=member_service
+      - MEMBER_SERVICE_NATS_URL=nats://nats:4222
+      - MEMBER_SERVICE_REDIS_HOST=redis
+      - MEMBER_SERVICE_REDIS_PORT=6379
+      - MEMBER_SERVICE_DEBUG=false
+      - MEMBER_SERVICE_LOG_LEVEL=info
+    secrets:
+      - postgres_password
+    expose:
+      - "8082"
+      - "9082"
+    volumes:
+      - ./config/prod:/app/config:ro
+      - application_logs_prod:/app/logs
+    networks:
+      - reciprocal-clubs-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  reciprocal-service:
+    build:
+      context: .
+      dockerfile: services/reciprocal-service/Dockerfile
+    environment:
+      - APP_ENV=production
+      - RECIPROCAL_SERVICE_SERVICE_PORT=8083
+      - RECIPROCAL_SERVICE_SERVICE_GRPC_PORT=9083
+      - RECIPROCAL_SERVICE_DATABASE_HOST=postgres
+      - RECIPROCAL_SERVICE_DATABASE_PORT=5432
+      - RECIPROCAL_SERVICE_DATABASE_USERNAME=postgres
+      - RECIPROCAL_SERVICE_DATABASE_PASSWORD_FILE=/run/secrets/postgres_password
+      - RECIPROCAL_SERVICE_DATABASE_DATABASE=reciprocal_service
+      - RECIPROCAL_SERVICE_NATS_URL=nats://nats:4222
+      - RECIPROCAL_SERVICE_BLOCKCHAIN_PEER_ENDPOINT=fabric-peer:7051
+      - RECIPROCAL_SERVICE_BLOCKCHAIN_ORDERER_ENDPOINT=fabric-orderer:7050
+      - RECIPROCAL_SERVICE_DEBUG=false
+      - RECIPROCAL_SERVICE_LOG_LEVEL=info
+    secrets:
+      - postgres_password
+    expose:
+      - "8083"
+      - "9083"
+    volumes:
+      - ./config/prod:/app/config:ro
+      - application_logs_prod:/app/logs
+    networks:
+      - reciprocal-clubs-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      fabric-peer:
+        condition: service_started
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  blockchain-service:
+    build:
+      context: .
+      dockerfile: services/blockchain-service/Dockerfile
+    environment:
+      - APP_ENV=production
+      - BLOCKCHAIN_SERVICE_SERVICE_PORT=8084
+      - BLOCKCHAIN_SERVICE_SERVICE_GRPC_PORT=9084
+      - BLOCKCHAIN_SERVICE_DATABASE_HOST=postgres
+      - BLOCKCHAIN_SERVICE_DATABASE_PORT=5432
+      - BLOCKCHAIN_SERVICE_DATABASE_USERNAME=postgres
+      - BLOCKCHAIN_SERVICE_DATABASE_PASSWORD_FILE=/run/secrets/postgres_password
+      - BLOCKCHAIN_SERVICE_DATABASE_DATABASE=blockchain_service
+      - BLOCKCHAIN_SERVICE_NATS_URL=nats://nats:4222
+      - BLOCKCHAIN_SERVICE_BLOCKCHAIN_PEER_ENDPOINT=fabric-peer:7051
+      - BLOCKCHAIN_SERVICE_BLOCKCHAIN_ORDERER_ENDPOINT=fabric-orderer:7050
+      - BLOCKCHAIN_SERVICE_BLOCKCHAIN_CA_ENDPOINT=fabric-ca:7054
+      - BLOCKCHAIN_SERVICE_DEBUG=false
+      - BLOCKCHAIN_SERVICE_LOG_LEVEL=info
+    secrets:
+      - postgres_password
+    expose:
+      - "8084"
+      - "9084"
+    volumes:
+      - ./config/prod:/app/config:ro
+      - application_logs_prod:/app/logs
+    networks:
+      - reciprocal-clubs-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      fabric-peer:
+        condition: service_started
+      fabric-ca:
+        condition: service_started
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: services/notification-service/Dockerfile
+    environment:
+      - APP_ENV=production
+      - NOTIFICATION_SERVICE_SERVICE_PORT=8085
+      - NOTIFICATION_SERVICE_SERVICE_GRPC_PORT=9085
+      - NOTIFICATION_SERVICE_DATABASE_HOST=postgres
+      - NOTIFICATION_SERVICE_DATABASE_PORT=5432
+      - NOTIFICATION_SERVICE_DATABASE_USERNAME=postgres
+      - NOTIFICATION_SERVICE_DATABASE_PASSWORD_FILE=/run/secrets/postgres_password
+      - NOTIFICATION_SERVICE_DATABASE_DATABASE=notification_service
+      - NOTIFICATION_SERVICE_NATS_URL=nats://nats:4222
+      - NOTIFICATION_SERVICE_REDIS_HOST=redis
+      - NOTIFICATION_SERVICE_REDIS_PORT=6379
+      - NOTIFICATION_SERVICE_SMTP_HOST=smtp.sendgrid.net
+      - NOTIFICATION_SERVICE_SMTP_PORT=587
+      - NOTIFICATION_SERVICE_SMTP_USERNAME=apikey
+      - NOTIFICATION_SERVICE_SMTP_PASSWORD_FILE=/run/secrets/smtp_password
+      - NOTIFICATION_SERVICE_DEBUG=false
+      - NOTIFICATION_SERVICE_LOG_LEVEL=info
+    secrets:
+      - postgres_password
+      - smtp_password
+    expose:
+      - "8085"
+      - "9085"
+    volumes:
+      - ./config/prod:/app/config:ro
+      - application_logs_prod:/app/logs
+    networks:
+      - reciprocal-clubs-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  analytics-service:
+    build:
+      context: .
+      dockerfile: services/analytics-service/Dockerfile
+    environment:
+      - APP_ENV=production
+      - ANALYTICS_SERVICE_SERVICE_PORT=8086
+      - ANALYTICS_SERVICE_SERVICE_GRPC_PORT=9086
+      - ANALYTICS_SERVICE_DATABASE_HOST=postgres
+      - ANALYTICS_SERVICE_DATABASE_PORT=5432
+      - ANALYTICS_SERVICE_DATABASE_USERNAME=postgres
+      - ANALYTICS_SERVICE_DATABASE_PASSWORD_FILE=/run/secrets/postgres_password
+      - ANALYTICS_SERVICE_DATABASE_DATABASE=analytics_service
+      - ANALYTICS_SERVICE_NATS_URL=nats://nats:4222
+      - ANALYTICS_SERVICE_REDIS_HOST=redis
+      - ANALYTICS_SERVICE_REDIS_PORT=6379
+      - ANALYTICS_SERVICE_DEBUG=false
+      - ANALYTICS_SERVICE_LOG_LEVEL=info
+    secrets:
+      - postgres_password
+    expose:
+      - "8086"
+      - "9086"
+    volumes:
+      - ./config/prod:/app/config:ro
+      - application_logs_prod:/app/logs
+    networks:
+      - reciprocal-clubs-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+
+  governance-service:
+    build:
+      context: .
+      dockerfile: services/governance-service/Dockerfile
+    environment:
+      - APP_ENV=production
+      - GOVERNANCE_SERVICE_SERVICE_PORT=8087
+      - GOVERNANCE_SERVICE_SERVICE_GRPC_PORT=9087
+      - GOVERNANCE_SERVICE_DATABASE_HOST=postgres
+      - GOVERNANCE_SERVICE_DATABASE_PORT=5432
+      - GOVERNANCE_SERVICE_DATABASE_USERNAME=postgres
+      - GOVERNANCE_SERVICE_DATABASE_PASSWORD_FILE=/run/secrets/postgres_password
+      - GOVERNANCE_SERVICE_DATABASE_DATABASE=governance_service
+      - GOVERNANCE_SERVICE_NATS_URL=nats://nats:4222
+      - GOVERNANCE_SERVICE_BLOCKCHAIN_PEER_ENDPOINT=fabric-peer:7051
+      - GOVERNANCE_SERVICE_BLOCKCHAIN_ORDERER_ENDPOINT=fabric-orderer:7050
+      - GOVERNANCE_SERVICE_DEBUG=false
+      - GOVERNANCE_SERVICE_LOG_LEVEL=info
+    secrets:
+      - postgres_password
+    expose:
+      - "8087"
+      - "9087"
+    volumes:
+      - ./config/prod:/app/config:ro
+      - application_logs_prod:/app/logs
+    networks:
+      - reciprocal-clubs-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      fabric-peer:
+        condition: service_started
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  # =======================================================================
+  # Monitoring and Observability
+  # =======================================================================
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: reciprocal-prometheus-prod
+    expose:
+      - "9090"
+    volumes:
+      - ./monitoring/prometheus.prod.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data_prod:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    networks:
+      - reciprocal-clubs-internal
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: reciprocal-grafana-prod
+    expose:
+      - "3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD_FILE=/run/secrets/grafana_password
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel,grafana-worldmap-panel
+    secrets:
+      - grafana_password
+    volumes:
+      - grafana_data_prod:/var/lib/grafana
+      - ./monitoring/grafana/prod/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/prod/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - reciprocal-clubs-internal
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+
+  # =======================================================================
+  # Load Balancer and Reverse Proxy
+  # =======================================================================
+
+  nginx:
+    image: nginx:alpine
+    container_name: reciprocal-nginx-prod
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/prod/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/prod/ssl:/etc/nginx/ssl:ro
+      - ./nginx/prod/html:/usr/share/nginx/html:ro
+    networks:
+      - reciprocal-clubs-prod
+    depends_on:
+      - api-gateway
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M

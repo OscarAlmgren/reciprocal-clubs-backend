@@ -1,0 +1,102 @@
+# =========================================================================
+# Podman Quadlet - Auth Service (Production)
+# =========================================================================
+# Systemd unit file for Auth Service in production environment
+# Place in /etc/containers/systemd/ on production systems
+
+[Unit]
+Description=Reciprocal Clubs Auth Service (Production)
+Documentation=https://docs.reciprocal-clubs.com/auth-service
+Wants=network-online.target postgres-prod.service nats-prod.service redis-prod.service hanko-prod.service
+After=network-online.target postgres-prod.service nats-prod.service redis-prod.service hanko-prod.service
+RequiresMountsFor=%t/containers
+PartOf=reciprocal-clubs-prod.target
+
+[Container]
+Image=reciprocal-clubs/auth-service:latest
+ContainerName=reciprocal-auth-service-prod
+AutoUpdate=registry
+Pull=newer
+
+# Production Environment Variables
+Environment=APP_ENV=production
+Environment=AUTH_SERVICE_SERVICE_PORT=8081
+Environment=AUTH_SERVICE_SERVICE_GRPC_PORT=9081
+Environment=AUTH_SERVICE_DATABASE_HOST=reciprocal-postgres-prod
+Environment=AUTH_SERVICE_DATABASE_PORT=5432
+Environment=AUTH_SERVICE_DATABASE_USERNAME=postgres
+Environment=AUTH_SERVICE_DATABASE_DATABASE=auth_service
+Environment=AUTH_SERVICE_NATS_URL=nats://reciprocal-nats-prod:4222
+Environment=AUTH_SERVICE_REDIS_HOST=reciprocal-redis-prod
+Environment=AUTH_SERVICE_REDIS_PORT=6379
+Environment=AUTH_SERVICE_HANKO_BASE_URL=http://reciprocal-hanko-prod:8000
+Environment=AUTH_SERVICE_MFA_ISSUER=Reciprocal Clubs
+Environment=AUTH_SERVICE_DEBUG=false
+Environment=AUTH_SERVICE_LOG_LEVEL=info
+
+# Production Secrets (using Podman secrets)
+Secret=postgres_password,type=env,target=AUTH_SERVICE_DATABASE_PASSWORD
+Secret=jwt_secret,type=env,target=AUTH_SERVICE_AUTH_JWT_SECRET
+Secret=hanko_api_key,type=env,target=AUTH_SERVICE_HANKO_API_KEY
+
+# Network Configuration (Internal only)
+Network=reciprocal-clubs-prod-internal.network
+IP=10.88.0.101
+
+# Health Check
+HealthCmd=curl -f http://localhost:8081/health || exit 1
+HealthInterval=30s
+HealthTimeout=10s
+HealthRetries=5
+HealthStartPeriod=60s
+
+# Resource Limits (Production)
+Memory=1g
+MemorySwap=1g
+CPUs=1.0
+PidsLimit=1000
+
+# Volume Mounts (Production)
+Volume=auth-service-logs:/app/logs:Z
+Volume=/etc/reciprocal-clubs/prod:/app/config:ro,Z
+
+# Security Hardening (Production)
+SecurityOpt=label=type:container_runtime_t
+SecurityOpt=no-new-privileges:true
+SecurityOpt=seccomp=unconfined
+User=1001:1001
+ReadOnly=true
+TmpFs=/tmp:rw,noexec,nosuid,size=100m
+
+# Production Labels
+Label=environment=production
+Label=service=auth-service
+Label=version=1.0.0
+Label=maintainer=reciprocal-clubs-ops
+Label=org.opencontainers.image.source=https://github.com/reciprocal-clubs/backend
+Label=org.opencontainers.image.documentation=https://docs.reciprocal-clubs.com/auth-service
+
+[Service]
+Type=notify
+Restart=always
+RestartSec=10
+TimeoutStartSec=900
+TimeoutStopSec=70
+KillMode=mixed
+KillSignal=SIGTERM
+
+# Production logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=auth-service-prod
+
+# Service hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target reciprocal-clubs-prod.target

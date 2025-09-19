@@ -1,0 +1,33 @@
+# =========================================================================
+# Podman Quadlet - Production External Network
+# =========================================================================
+# External-facing network for production load balancer and ingress
+
+[Unit]
+Description=Reciprocal Clubs Production External Network
+Documentation=https://docs.reciprocal-clubs.com/deployment
+PartOf=reciprocal-clubs-prod.target
+
+[Network]
+NetworkName=reciprocal-clubs-prod-external
+Driver=bridge
+Subnet=10.89.0.0/16
+Gateway=10.89.0.1
+
+# Production external network settings
+Label=environment=production
+Label=project=reciprocal-clubs
+Label=network=external
+Label=security=medium
+
+# External connectivity
+Internal=false
+DisableDNS=false
+
+# DNS Configuration
+DNS=10.89.0.1
+DNS=1.1.1.1
+DNS=1.0.0.1
+
+[Install]
+WantedBy=multi-user.target reciprocal-clubs-prod.target

@@ -1,0 +1,239 @@
+# =========================================================================
+# Auth Service - Development Environment
+# =========================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service-dev
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: auth-service
+    environment: development
+    component: auth
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: auth-service
+      environment: development
+  template:
+    metadata:
+      labels:
+        app: auth-service
+        environment: development
+        component: auth
+    spec:
+      securityContext:
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        runAsNonRoot: true
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - auth-service
+              topologyKey: kubernetes.io/hostname
+      initContainers:
+      - name: wait-for-postgres
+        image: postgres:15-alpine
+        command: ['sh', '-c', 'until pg_isready -h $DB_HOST -p $DB_PORT -U $DB_USERNAME; do echo waiting for postgres; sleep 2; done;']
+        envFrom:
+        - configMapRef:
+            name: reciprocal-clubs-dev-config
+        - secretRef:
+            name: reciprocal-clubs-dev-secrets
+      - name: wait-for-redis
+        image: redis:7-alpine
+        command: ['sh', '-c', 'until redis-cli -h $REDIS_HOST -p $REDIS_PORT ping; do echo waiting for redis; sleep 2; done;']
+        envFrom:
+        - configMapRef:
+            name: reciprocal-clubs-dev-config
+      - name: wait-for-nats
+        image: nats:2.10-alpine
+        command: ['sh', '-c', 'until nats-server --check-config && nats account info -s $NATS_URL; do echo waiting for nats; sleep 2; done;']
+        envFrom:
+        - configMapRef:
+            name: reciprocal-clubs-dev-config
+      - name: wait-for-hanko
+        image: curlimages/curl:latest
+        command: ['sh', '-c', 'until curl -f $HANKO_BASE_URL/.well-known/config; do echo waiting for hanko; sleep 2; done;']
+        envFrom:
+        - configMapRef:
+            name: reciprocal-clubs-dev-config
+      containers:
+      - name: auth-service
+        image: reciprocal-clubs/auth-service:dev
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 8081
+          protocol: TCP
+        - name: grpc
+          containerPort: 9081
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        env:
+        - name: PORT
+          value: "8081"
+        - name: GRPC_PORT
+          value: "9081"
+        - name: METRICS_PORT
+          value: "9090"
+        envFrom:
+        - configMapRef:
+            name: reciprocal-clubs-dev-config
+        - secretRef:
+            name: reciprocal-clubs-dev-secrets
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: logs
+          mountPath: /app/logs
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: logs
+        emptyDir: {}
+      imagePullSecrets:
+      - name: reciprocal-clubs-registry-secret
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service-dev-service
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: auth-service
+    environment: development
+    component: auth
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8081
+    targetPort: 8081
+    protocol: TCP
+  - name: grpc
+    port: 9081
+    targetPort: 9081
+    protocol: TCP
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+    protocol: TCP
+  selector:
+    app: auth-service
+    environment: development
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: auth-service-dev-monitor
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: auth-service
+    environment: development
+    component: auth
+spec:
+  selector:
+    matchLabels:
+      app: auth-service
+      environment: development
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: auth-service-dev-hpa
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: auth-service
+    environment: development
+    component: auth
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: auth-service-dev
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: auth-service-dev-pdb
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: auth-service
+    environment: development
+    component: auth
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: auth-service
+      environment: development

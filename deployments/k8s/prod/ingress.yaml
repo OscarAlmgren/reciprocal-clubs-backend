@@ -1,0 +1,561 @@
+# =========================================================================
+# Production Ingress Configuration with NGINX, TLS, and Rate Limiting
+# =========================================================================
+
+# =========================================================================
+# NGINX Ingress Controller Configuration
+# =========================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-ingress-controller-config
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/component: controller
+data:
+  # Global NGINX configuration
+  allow-snippet-annotations: "false"
+  enable-real-ip: "true"
+  forwarded-for-header: "X-Forwarded-For"
+  compute-full-forwarded-for: "true"
+  use-forwarded-headers: "true"
+
+  # Security headers
+  add-headers: "reciprocal-clubs-prod/security-headers"
+
+  # Performance optimizations
+  worker-processes: "auto"
+  worker-connections: "16384"
+  worker-rlimit-nofile: "65536"
+
+  # SSL/TLS configuration
+  ssl-protocols: "TLSv1.2 TLSv1.3"
+  ssl-ciphers: "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256"
+  ssl-prefer-server-ciphers: "true"
+  ssl-session-cache: "shared:SSL:10m"
+  ssl-session-timeout: "10m"
+
+  # Rate limiting
+  rate-limit-rpm: "1000"
+  rate-limit-rps: "100"
+
+  # Client settings
+  client-max-body-size: "10m"
+  client-body-buffer-size: "128k"
+  client-header-buffer-size: "4k"
+  large-client-header-buffers: "4 16k"
+
+  # Timeouts
+  proxy-connect-timeout: "60"
+  proxy-send-timeout: "60"
+  proxy-read-timeout: "60"
+  proxy-body-size: "10m"
+
+  # Keep-alive
+  keep-alive: "75"
+  keep-alive-requests: "100"
+
+  # Gzip compression
+  enable-gzip: "true"
+  gzip-types: "text/plain text/css text/xml text/javascript application/javascript application/xml+rss application/json"
+
+  # Security
+  hide-headers: "Server,X-Powered-By"
+  server-tokens: "false"
+
+---
+# =========================================================================
+# Security Headers ConfigMap
+# =========================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: security-headers
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: security-headers
+    environment: production
+data:
+  X-Frame-Options: "DENY"
+  X-Content-Type-Options: "nosniff"
+  X-XSS-Protection: "1; mode=block"
+  Referrer-Policy: "strict-origin-when-cross-origin"
+  Content-Security-Policy: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' wss: https:; frame-ancestors 'none';"
+  Strict-Transport-Security: "max-age=31536000; includeSubDomains; preload"
+  Permissions-Policy: "geolocation=(), microphone=(), camera=(), fullscreen=(self), payment=()"
+
+---
+# =========================================================================
+# Main Application Ingress
+# =========================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: reciprocal-clubs-prod-ingress
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: ingress
+    environment: production
+  annotations:
+    # Ingress class
+    kubernetes.io/ingress.class: "nginx"
+
+    # Certificate management
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+
+    # Rate limiting
+    nginx.ingress.kubernetes.io/rate-limit: "1000"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    nginx.ingress.kubernetes.io/rate-limit-burst: "2000"
+    nginx.ingress.kubernetes.io/rate-limit-response-code: "429"
+
+    # SSL configuration
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
+
+    # Security
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://reciprocal-clubs.com,https://app.reciprocal-clubs.com,https://admin.reciprocal-clubs.com"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization"
+    nginx.ingress.kubernetes.io/cors-expose-headers: "Content-Length,Content-Range"
+    nginx.ingress.kubernetes.io/cors-max-age: "86400"
+
+    # Performance
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-buffering: "on"
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "4k"
+
+    # Session affinity for WebSocket support
+    nginx.ingress.kubernetes.io/session-cookie-name: "reciprocal-clubs-affinity"
+    nginx.ingress.kubernetes.io/session-cookie-expires: "86400"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "86400"
+    nginx.ingress.kubernetes.io/session-cookie-path: "/"
+    nginx.ingress.kubernetes.io/session-cookie-change-on-failure: "true"
+
+    # WebSocket support
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/server-snippets: |
+      location /ws {
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_http_version 1.1;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+      }
+
+spec:
+  tls:
+  - hosts:
+    - api.reciprocal-clubs.com
+    - app.reciprocal-clubs.com
+    - admin.reciprocal-clubs.com
+    - auth.reciprocal-clubs.com
+    secretName: reciprocal-clubs-tls
+
+  rules:
+  # API Gateway - Main API endpoint
+  - host: api.reciprocal-clubs.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: api-gateway-prod
+            port:
+              number: 8080
+
+  # Authentication endpoints
+  - host: auth.reciprocal-clubs.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: hanko-prod-service
+            port:
+              number: 8000
+      - path: /admin
+        pathType: Prefix
+        backend:
+          service:
+            name: hanko-prod-service
+            port:
+              number: 8001
+
+---
+# =========================================================================
+# Internal Services Ingress (for admin/monitoring access)
+# =========================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: reciprocal-clubs-internal-ingress
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: internal-ingress
+    environment: production
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+
+    # Authentication required for internal services
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: admin-auth
+    nginx.ingress.kubernetes.io/auth-realm: "Reciprocal Clubs Internal Services"
+
+    # IP whitelist for admin access
+    nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+
+    # Rate limiting for internal services
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+
+    # SSL
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+
+spec:
+  tls:
+  - hosts:
+    - internal.reciprocal-clubs.com
+    secretName: reciprocal-clubs-internal-tls
+
+  rules:
+  - host: internal.reciprocal-clubs.com
+    http:
+      paths:
+      # PostgreSQL monitoring (through pg_exporter)
+      - path: /postgres-metrics
+        pathType: Prefix
+        backend:
+          service:
+            name: postgres-prod-service
+            port:
+              number: 9187
+
+      # Redis monitoring
+      - path: /redis-metrics
+        pathType: Prefix
+        backend:
+          service:
+            name: redis-prod-service
+            port:
+              number: 9121
+
+      # NATS monitoring
+      - path: /nats
+        pathType: Prefix
+        backend:
+          service:
+            name: nats-prod-service
+            port:
+              number: 8222
+
+      # NATS metrics
+      - path: /nats-metrics
+        pathType: Prefix
+        backend:
+          service:
+            name: nats-prod-service
+            port:
+              number: 7777
+
+---
+# =========================================================================
+# Service-specific Ingress for Direct Access (if needed)
+# =========================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: reciprocal-clubs-services-ingress
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: services-ingress
+    environment: production
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+
+    # Authentication for direct service access
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: service-auth
+    nginx.ingress.kubernetes.io/auth-realm: "Reciprocal Clubs Services"
+
+    # Rate limiting
+    nginx.ingress.kubernetes.io/rate-limit: "500"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+
+    # SSL
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+
+    # Service-specific routing
+    nginx.ingress.kubernetes.io/use-regex: "true"
+
+spec:
+  tls:
+  - hosts:
+    - services.reciprocal-clubs.com
+    secretName: reciprocal-clubs-services-tls
+
+  rules:
+  - host: services.reciprocal-clubs.com
+    http:
+      paths:
+      # Auth Service
+      - path: /auth(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: auth-service-prod
+            port:
+              number: 8081
+
+      # Member Service
+      - path: /members(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: member-service-prod
+            port:
+              number: 8082
+
+      # Reciprocal Service
+      - path: /reciprocal(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: reciprocal-service-prod
+            port:
+              number: 8083
+
+      # Blockchain Service
+      - path: /blockchain(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: blockchain-service-prod
+            port:
+              number: 8084
+
+      # Notification Service
+      - path: /notifications(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: notification-service-prod
+            port:
+              number: 8085
+
+      # Analytics Service
+      - path: /analytics(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: analytics-service-prod
+            port:
+              number: 8086
+
+      # Governance Service
+      - path: /governance(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: governance-service-prod
+            port:
+              number: 8087
+
+---
+# =========================================================================
+# WebSocket Ingress for Real-time Features
+# =========================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: reciprocal-clubs-websocket-ingress
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: websocket-ingress
+    environment: production
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+
+    # WebSocket specific configuration
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+
+    # Session affinity for WebSocket connections
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/session-cookie-name: "ws-affinity"
+    nginx.ingress.kubernetes.io/session-cookie-expires: "86400"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "86400"
+
+    # Rate limiting for WebSocket connections
+    nginx.ingress.kubernetes.io/rate-limit: "200"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+
+    # SSL
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+
+    # WebSocket upgrade headers
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+      proxy_cache_bypass $http_upgrade;
+
+spec:
+  tls:
+  - hosts:
+    - ws.reciprocal-clubs.com
+    secretName: reciprocal-clubs-ws-tls
+
+  rules:
+  - host: ws.reciprocal-clubs.com
+    http:
+      paths:
+      # Real-time notifications
+      - path: /notifications
+        pathType: Prefix
+        backend:
+          service:
+            name: notification-service-prod
+            port:
+              number: 8085
+
+      # Real-time analytics
+      - path: /analytics
+        pathType: Prefix
+        backend:
+          service:
+            name: analytics-service-prod
+            port:
+              number: 8086
+
+---
+# =========================================================================
+# Rate Limiting ConfigMap
+# =========================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rate-limit-config
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: rate-limiting
+    environment: production
+data:
+  # Rate limiting zones configuration
+  rate-limit-zones: |
+    # Global rate limiting
+    limit_req_zone $binary_remote_addr zone=global:10m rate=100r/s;
+
+    # API rate limiting
+    limit_req_zone $binary_remote_addr zone=api:10m rate=1000r/m;
+
+    # Authentication rate limiting
+    limit_req_zone $binary_remote_addr zone=auth:10m rate=10r/m;
+
+    # WebSocket rate limiting
+    limit_req_zone $binary_remote_addr zone=websocket:10m rate=50r/s;
+
+    # Admin interface rate limiting
+    limit_req_zone $binary_remote_addr zone=admin:10m rate=60r/m;
+
+---
+# =========================================================================
+# Admin Authentication Secret
+# =========================================================================
+apiVersion: v1
+kind: Secret
+metadata:
+  name: admin-auth
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: admin-auth
+    environment: production
+type: Opaque
+data:
+  # admin:$2y$10$... (bcrypt hash of password)
+  # Generate with: htpasswd -nb admin your-secure-password | base64
+  auth: YWRtaW46JDJ5JDEwJGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: service-auth
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: service-auth
+    environment: production
+type: Opaque
+data:
+  # service:$2y$10$... (bcrypt hash of password)
+  # Generate with: htpasswd -nb service your-secure-password | base64
+  auth: c2VydmljZTokMnkkMTAkYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWg==
+
+---
+# =========================================================================
+# Network Policy for Ingress
+# =========================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ingress-network-policy
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: network-policy
+    environment: production
+spec:
+  podSelector:
+    matchLabels:
+      environment: production
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow traffic from ingress controller
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 8081
+    - protocol: TCP
+      port: 8082
+    - protocol: TCP
+      port: 8083
+    - protocol: TCP
+      port: 8084
+    - protocol: TCP
+      port: 8085
+    - protocol: TCP
+      port: 8086
+    - protocol: TCP
+      port: 8087

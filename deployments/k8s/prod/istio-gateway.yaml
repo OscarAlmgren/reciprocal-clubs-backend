@@ -1,0 +1,769 @@
+# =========================================================================
+# Istio Service Mesh Configuration for Production
+# =========================================================================
+
+# =========================================================================
+# Istio Gateway for External Traffic
+# =========================================================================
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: reciprocal-clubs-gateway
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: istio-gateway
+    environment: production
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  # HTTPS traffic
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: reciprocal-clubs-tls
+    hosts:
+    - api.reciprocal-clubs.com
+    - app.reciprocal-clubs.com
+    - admin.reciprocal-clubs.com
+    - auth.reciprocal-clubs.com
+    - ws.reciprocal-clubs.com
+
+  # HTTP traffic (redirect to HTTPS)
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - api.reciprocal-clubs.com
+    - app.reciprocal-clubs.com
+    - admin.reciprocal-clubs.com
+    - auth.reciprocal-clubs.com
+    - ws.reciprocal-clubs.com
+    tls:
+      httpsRedirect: true
+
+---
+# =========================================================================
+# Virtual Service for API Gateway
+# =========================================================================
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: api-gateway-vs
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: api-gateway
+    app.kubernetes.io/component: virtual-service
+    environment: production
+spec:
+  hosts:
+  - api.reciprocal-clubs.com
+  gateways:
+  - reciprocal-clubs-gateway
+  http:
+  # API versioning routes
+  - match:
+    - uri:
+        prefix: /v1/
+    route:
+    - destination:
+        host: api-gateway-prod.reciprocal-clubs-prod.svc.cluster.local
+        port:
+          number: 8080
+    timeout: 30s
+    retries:
+      attempts: 3
+      perTryTimeout: 10s
+      retryOn: gateway-error,connect-failure,refused-stream
+
+  # Default API route
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: api-gateway-prod.reciprocal-clubs-prod.svc.cluster.local
+        port:
+          number: 8080
+    timeout: 30s
+    retries:
+      attempts: 3
+      perTryTimeout: 10s
+
+  # Rate limiting
+  - match:
+    - headers:
+        ":path":
+          regex: "^/api/.*"
+    route:
+    - destination:
+        host: api-gateway-prod.reciprocal-clubs-prod.svc.cluster.local
+        port:
+          number: 8080
+    fault:
+      delay:
+        percentage:
+          value: 0.1
+        fixedDelay: 5s
+
+---
+# =========================================================================
+# Virtual Service for Authentication
+# =========================================================================
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: auth-service-vs
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/component: virtual-service
+    environment: production
+spec:
+  hosts:
+  - auth.reciprocal-clubs.com
+  gateways:
+  - reciprocal-clubs-gateway
+  http:
+  # Hanko public API
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: hanko-prod-service.reciprocal-clubs-prod.svc.cluster.local
+        port:
+          number: 8000
+    timeout: 15s
+    retries:
+      attempts: 2
+      perTryTimeout: 5s
+
+  # Admin interface (restricted)
+  - match:
+    - uri:
+        prefix: /admin
+    route:
+    - destination:
+        host: hanko-prod-service.reciprocal-clubs-prod.svc.cluster.local
+        port:
+          number: 8001
+    timeout: 30s
+
+---
+# =========================================================================
+# Virtual Service for WebSocket Connections
+# =========================================================================
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: websocket-vs
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: websocket-virtual-service
+    environment: production
+spec:
+  hosts:
+  - ws.reciprocal-clubs.com
+  gateways:
+  - reciprocal-clubs-gateway
+  http:
+  # Real-time notifications
+  - match:
+    - uri:
+        prefix: /notifications
+    - headers:
+        upgrade:
+          exact: websocket
+    route:
+    - destination:
+        host: notification-service-prod.reciprocal-clubs-prod.svc.cluster.local
+        port:
+          number: 8085
+    timeout: 3600s
+
+  # Real-time analytics
+  - match:
+    - uri:
+        prefix: /analytics
+    - headers:
+        upgrade:
+          exact: websocket
+    route:
+    - destination:
+        host: analytics-service-prod.reciprocal-clubs-prod.svc.cluster.local
+        port:
+          number: 8086
+    timeout: 3600s
+
+---
+# =========================================================================
+# Destination Rules for Load Balancing and Circuit Breaking
+# =========================================================================
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: api-gateway-dr
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: api-gateway
+    app.kubernetes.io/component: destination-rule
+    environment: production
+spec:
+  host: api-gateway-prod.reciprocal-clubs-prod.svc.cluster.local
+  trafficPolicy:
+    loadBalancer:
+      simple: LEAST_CONN
+    connectionPool:
+      tcp:
+        maxConnections: 100
+        connectTimeout: 30s
+      http:
+        http1MaxPendingRequests: 50
+        http2MaxRequests: 100
+        maxRequestsPerConnection: 10
+        maxRetries: 3
+        consecutiveGatewayErrors: 5
+        interval: 30s
+        baseEjectionTime: 30s
+        maxEjectionPercent: 50
+    circuitBreaker:
+      consecutiveGatewayErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 50
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: auth-service-dr
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/component: destination-rule
+    environment: production
+spec:
+  host: auth-service-prod.reciprocal-clubs-prod.svc.cluster.local
+  trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN
+    connectionPool:
+      tcp:
+        maxConnections: 50
+        connectTimeout: 10s
+      http:
+        http1MaxPendingRequests: 25
+        maxRequestsPerConnection: 5
+        maxRetries: 2
+    circuitBreaker:
+      consecutiveGatewayErrors: 3
+      interval: 30s
+      baseEjectionTime: 30s
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: member-service-dr
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: member-service
+    app.kubernetes.io/component: destination-rule
+    environment: production
+spec:
+  host: member-service-prod.reciprocal-clubs-prod.svc.cluster.local
+  trafficPolicy:
+    loadBalancer:
+      simple: LEAST_CONN
+    connectionPool:
+      tcp:
+        maxConnections: 50
+        connectTimeout: 10s
+      http:
+        http1MaxPendingRequests: 25
+        maxRequestsPerConnection: 5
+        maxRetries: 2
+    circuitBreaker:
+      consecutiveGatewayErrors: 3
+      interval: 30s
+      baseEjectionTime: 30s
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: reciprocal-service-dr
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: reciprocal-service
+    app.kubernetes.io/component: destination-rule
+    environment: production
+spec:
+  host: reciprocal-service-prod.reciprocal-clubs-prod.svc.cluster.local
+  trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN
+    connectionPool:
+      tcp:
+        maxConnections: 50
+        connectTimeout: 10s
+      http:
+        http1MaxPendingRequests: 25
+        maxRequestsPerConnection: 5
+        maxRetries: 2
+    circuitBreaker:
+      consecutiveGatewayErrors: 3
+      interval: 30s
+      baseEjectionTime: 30s
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: blockchain-service-dr
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: blockchain-service
+    app.kubernetes.io/component: destination-rule
+    environment: production
+spec:
+  host: blockchain-service-prod.reciprocal-clubs-prod.svc.cluster.local
+  trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN
+    connectionPool:
+      tcp:
+        maxConnections: 30
+        connectTimeout: 15s
+      http:
+        http1MaxPendingRequests: 15
+        maxRequestsPerConnection: 3
+        maxRetries: 1
+    circuitBreaker:
+      consecutiveGatewayErrors: 2
+      interval: 60s
+      baseEjectionTime: 60s
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: notification-service-dr
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: notification-service
+    app.kubernetes.io/component: destination-rule
+    environment: production
+spec:
+  host: notification-service-prod.reciprocal-clubs-prod.svc.cluster.local
+  trafficPolicy:
+    loadBalancer:
+      simple: LEAST_CONN
+    connectionPool:
+      tcp:
+        maxConnections: 100
+        connectTimeout: 10s
+      http:
+        http1MaxPendingRequests: 50
+        maxRequestsPerConnection: 10
+        maxRetries: 3
+    circuitBreaker:
+      consecutiveGatewayErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: analytics-service-dr
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: analytics-service
+    app.kubernetes.io/component: destination-rule
+    environment: production
+spec:
+  host: analytics-service-prod.reciprocal-clubs-prod.svc.cluster.local
+  trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN
+    connectionPool:
+      tcp:
+        maxConnections: 50
+        connectTimeout: 15s
+      http:
+        http1MaxPendingRequests: 25
+        maxRequestsPerConnection: 5
+        maxRetries: 2
+    circuitBreaker:
+      consecutiveGatewayErrors: 3
+      interval: 30s
+      baseEjectionTime: 30s
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: governance-service-dr
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: governance-service
+    app.kubernetes.io/component: destination-rule
+    environment: production
+spec:
+  host: governance-service-prod.reciprocal-clubs-prod.svc.cluster.local
+  trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN
+    connectionPool:
+      tcp:
+        maxConnections: 30
+        connectTimeout: 10s
+      http:
+        http1MaxPendingRequests: 15
+        maxRequestsPerConnection: 3
+        maxRetries: 2
+    circuitBreaker:
+      consecutiveGatewayErrors: 3
+      interval: 30s
+      baseEjectionTime: 30s
+
+---
+# =========================================================================
+# Service Entry for External Services
+# =========================================================================
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: external-postgres
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: service-entry
+    environment: production
+spec:
+  hosts:
+  - postgres.external.com  # Replace with actual external PostgreSQL host
+  ports:
+  - number: 5432
+    name: postgres
+    protocol: TCP
+  location: MESH_EXTERNAL
+  resolution: DNS
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: external-redis
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: service-entry
+    environment: production
+spec:
+  hosts:
+  - redis.external.com  # Replace with actual external Redis host
+  ports:
+  - number: 6379
+    name: redis
+    protocol: TCP
+  location: MESH_EXTERNAL
+  resolution: DNS
+
+---
+# =========================================================================
+# Authorization Policies
+# =========================================================================
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: api-gateway-authz
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: api-gateway
+    app.kubernetes.io/component: authorization-policy
+    environment: production
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api-gateway
+  rules:
+  # Allow all authenticated requests
+  - from:
+    - source:
+        principals: ["cluster.local/ns/reciprocal-clubs-prod/sa/default"]
+  # Allow health checks
+  - to:
+    - operation:
+        paths: ["/health", "/ready", "/metrics"]
+
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: internal-services-authz
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: authorization-policy
+    environment: production
+spec:
+  selector:
+    matchLabels:
+      environment: production
+  rules:
+  # Allow traffic from within the mesh
+  - from:
+    - source:
+        namespaces: ["reciprocal-clubs-prod"]
+  # Allow ingress gateway traffic
+  - from:
+    - source:
+        namespaces: ["istio-system"]
+  # Allow monitoring traffic
+  - from:
+    - source:
+        namespaces: ["monitoring"]
+    to:
+    - operation:
+        paths: ["/metrics", "/health"]
+
+---
+# =========================================================================
+# Peer Authentication (mTLS)
+# =========================================================================
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: peer-authentication
+    environment: production
+spec:
+  mtls:
+    mode: STRICT  # Require mTLS for all communication
+
+---
+# =========================================================================
+# Request Authentication (JWT)
+# =========================================================================
+apiVersion: security.istio.io/v1beta1
+kind: RequestAuthentication
+metadata:
+  name: jwt-auth
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: request-authentication
+    environment: production
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api-gateway
+  jwtRules:
+  - issuer: "https://auth.reciprocal-clubs.com"
+    jwksUri: "https://auth.reciprocal-clubs.com/.well-known/jwks.json"
+    audiences:
+    - "reciprocal-clubs-api"
+
+---
+# =========================================================================
+# Telemetry Configuration
+# =========================================================================
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: metrics-config
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: telemetry
+    environment: production
+spec:
+  metrics:
+  - providers:
+    - name: prometheus
+  - overrides:
+    - match:
+        metric: ALL_METRICS
+      tagOverrides:
+        environment:
+          value: "production"
+        cluster:
+          value: "reciprocal-clubs-prod"
+
+---
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: tracing-config
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: telemetry
+    environment: production
+spec:
+  tracing:
+  - providers:
+    - name: jaeger
+  - customTags:
+      environment:
+        literal:
+          value: "production"
+      cluster:
+        literal:
+          value: "reciprocal-clubs-prod"
+
+---
+# =========================================================================
+# Envoy Filter for Rate Limiting
+# =========================================================================
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: rate-limit-filter
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: envoy-filter
+    environment: production
+spec:
+  workloadSelector:
+    labels:
+      app.kubernetes.io/name: api-gateway
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: SIDECAR_INBOUND
+      listener:
+        filterChain:
+          filter:
+            name: "envoy.filters.network.http_connection_manager"
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.local_ratelimit
+        typed_config:
+          "@type": type.googleapis.com/udpa.type.v1.TypedStruct
+          type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+          value:
+            stat_prefix: local_rate_limiter
+            token_bucket:
+              max_tokens: 1000
+              tokens_per_fill: 1000
+              fill_interval: 60s
+            filter_enabled:
+              runtime_key: local_rate_limit_enabled
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
+            filter_enforced:
+              runtime_key: local_rate_limit_enforced
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
+
+---
+# =========================================================================
+# Service Monitor for Prometheus
+# =========================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: istio-mesh-metrics
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: reciprocal-clubs
+    app.kubernetes.io/component: service-monitor
+    environment: production
+spec:
+  selector:
+    matchLabels:
+      environment: production
+  endpoints:
+  - port: http-monitoring
+    interval: 30s
+    path: /stats/prometheus
+    scheme: http
+
+---
+# =========================================================================
+# Canary Deployment Configuration
+# =========================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: api-gateway-canary
+  namespace: reciprocal-clubs-prod
+  labels:
+    app.kubernetes.io/name: api-gateway
+    app.kubernetes.io/component: canary-rollout
+    environment: production
+spec:
+  replicas: 3
+  strategy:
+    canary:
+      maxSurge: "25%"
+      maxUnavailable: 0
+      steps:
+      - setWeight: 10
+      - pause: {duration: 2m}
+      - setWeight: 20
+      - pause: {duration: 2m}
+      - setWeight: 50
+      - pause: {duration: 5m}
+      - setWeight: 80
+      - pause: {duration: 2m}
+      trafficRouting:
+        istio:
+          virtualService:
+            name: api-gateway-vs
+            routes:
+            - primary
+          destinationRule:
+            name: api-gateway-dr
+            canarySubsetName: canary
+            stableSubsetName: stable
+      analysis:
+        templates:
+        - templateName: success-rate
+        args:
+        - name: service-name
+          value: api-gateway-prod
+        startingStep: 2
+        successCondition: result[0] >= 0.95
+        failureLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api-gateway
+      environment: production
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: api-gateway
+        app.kubernetes.io/component: gateway
+        environment: production
+    spec:
+      containers:
+      - name: api-gateway
+        image: reciprocal-clubs/api-gateway:latest
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"

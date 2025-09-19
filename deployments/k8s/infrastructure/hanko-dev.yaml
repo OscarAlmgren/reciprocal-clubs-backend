@@ -1,0 +1,683 @@
+# =========================================================================
+# Hanko Development Infrastructure
+# =========================================================================
+# Comprehensive Hanko authentication deployment for development environment
+# Includes: Hanko PostgreSQL, migration job, Hanko service, health checks
+
+---
+# Hanko PostgreSQL Database (separate from main postgres)
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: hanko-postgres-dev-pv
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: hanko-postgres
+    environment: development
+    component: database
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /mnt/data/hanko-postgres-dev
+    type: DirectoryOrCreate
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hanko-postgres-dev-pvc
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: hanko-postgres
+    environment: development
+    component: database
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: manual
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hanko-postgres-dev
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: hanko-postgres
+    environment: development
+    component: database
+    version: "15"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: hanko-postgres
+      environment: development
+  template:
+    metadata:
+      labels:
+        app: hanko-postgres
+        environment: development
+        component: database
+        version: "15"
+    spec:
+      securityContext:
+        fsGroup: 999
+        runAsUser: 999
+        runAsGroup: 999
+        runAsNonRoot: true
+      initContainers:
+      - name: hanko-postgres-init
+        image: postgres:15-alpine
+        securityContext:
+          runAsUser: 999
+          runAsGroup: 999
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+        env:
+        - name: POSTGRES_DB
+          value: "hanko_dev"
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: hanko-postgres-dev-secrets
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: hanko-postgres-dev-secrets
+              key: POSTGRES_PASSWORD
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        command:
+        - sh
+        - -c
+        - |
+          set -e
+          echo "Initializing Hanko PostgreSQL data directory..."
+          if [ ! -d "$PGDATA" ]; then
+            mkdir -p "$PGDATA"
+            chown -R postgres:postgres "$PGDATA"
+            chmod 700 "$PGDATA"
+          fi
+          echo "Hanko PostgreSQL init container completed"
+        volumeMounts:
+        - name: hanko-postgres-storage
+          mountPath: /var/lib/postgresql/data
+        - name: tmp
+          mountPath: /tmp
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+      containers:
+      - name: hanko-postgres
+        image: postgres:15-alpine
+        securityContext:
+          runAsUser: 999
+          runAsGroup: 999
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+        ports:
+        - containerPort: 5432
+          name: postgres
+          protocol: TCP
+        env:
+        - name: POSTGRES_DB
+          value: "hanko_dev"
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: hanko-postgres-dev-secrets
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: hanko-postgres-dev-secrets
+              key: POSTGRES_PASSWORD
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        - name: POSTGRES_INITDB_ARGS
+          value: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
+        - name: POSTGRES_HOST_AUTH_METHOD
+          value: "md5"
+        volumeMounts:
+        - name: hanko-postgres-storage
+          mountPath: /var/lib/postgresql/data
+        - name: tmp
+          mountPath: /tmp
+        - name: run
+          mountPath: /var/run/postgresql
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U $POSTGRES_USER -d hanko_dev -h 127.0.0.1 -p 5432
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+          successThreshold: 1
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U $POSTGRES_USER -d hanko_dev -h 127.0.0.1 -p 5432
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+          successThreshold: 1
+        startupProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U $POSTGRES_USER -d hanko_dev -h 127.0.0.1 -p 5432
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 30
+          successThreshold: 1
+      volumes:
+      - name: hanko-postgres-storage
+        persistentVolumeClaim:
+          claimName: hanko-postgres-dev-pvc
+      - name: tmp
+        emptyDir: {}
+      - name: run
+        emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - hanko-postgres
+              topologyKey: kubernetes.io/hostname
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hanko-postgres-dev-service
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: hanko-postgres
+    environment: development
+    component: database
+spec:
+  selector:
+    app: hanko-postgres
+    environment: development
+  ports:
+  - name: postgres
+    port: 5432
+    targetPort: 5432
+    protocol: TCP
+  type: ClusterIP
+  sessionAffinity: None
+
+---
+# Hanko Migration Job
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hanko-migrate-dev
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: hanko-migrate
+    environment: development
+    component: migration
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        app: hanko-migrate
+        environment: development
+        component: migration
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsUser: 1001
+        runAsGroup: 1001
+        runAsNonRoot: true
+        fsGroup: 1001
+      initContainers:
+      - name: wait-for-hanko-postgres
+        image: postgres:15-alpine
+        securityContext:
+          runAsUser: 999
+          runAsGroup: 999
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+        command:
+        - sh
+        - -c
+        - |
+          echo "Waiting for Hanko PostgreSQL to be ready..."
+          until pg_isready -h hanko-postgres-dev-service -p 5432 -U hanko; do
+            echo "Hanko PostgreSQL is unavailable - sleeping"
+            sleep 2
+          done
+          echo "Hanko PostgreSQL is ready!"
+        env:
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: hanko-postgres-dev-secrets
+              key: POSTGRES_PASSWORD
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+          limits:
+            memory: "64Mi"
+            cpu: "50m"
+      containers:
+      - name: hanko-migrate
+        image: teamhanko/hanko:latest
+        securityContext:
+          runAsUser: 1001
+          runAsGroup: 1001
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+        command:
+        - hanko
+        - migrate
+        - up
+        - --config
+        - /etc/config/config.yaml
+        volumeMounts:
+        - name: hanko-config
+          mountPath: /etc/config
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+        env:
+        - name: HANKO_DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: hanko-postgres-dev-secrets
+              key: POSTGRES_PASSWORD
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+      volumes:
+      - name: hanko-config
+        configMap:
+          name: hanko-dev-config
+          items:
+          - key: config.yaml
+            path: config.yaml
+          defaultMode: 0644
+      - name: tmp
+        emptyDir: {}
+
+---
+# Hanko Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hanko-dev
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: hanko
+    environment: development
+    component: authentication
+    version: "latest"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: hanko
+      environment: development
+  template:
+    metadata:
+      labels:
+        app: hanko
+        environment: development
+        component: authentication
+        version: "latest"
+      annotations:
+        config/checksum: "dev-hanko-config"
+    spec:
+      securityContext:
+        runAsUser: 1001
+        runAsGroup: 1001
+        runAsNonRoot: true
+        fsGroup: 1001
+      initContainers:
+      - name: wait-for-hanko-postgres
+        image: postgres:15-alpine
+        securityContext:
+          runAsUser: 999
+          runAsGroup: 999
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+        command:
+        - sh
+        - -c
+        - |
+          echo "Waiting for Hanko PostgreSQL to be ready..."
+          until pg_isready -h hanko-postgres-dev-service -p 5432 -U hanko; do
+            echo "Hanko PostgreSQL is unavailable - sleeping"
+            sleep 2
+          done
+          echo "Hanko PostgreSQL is ready!"
+        env:
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: hanko-postgres-dev-secrets
+              key: POSTGRES_PASSWORD
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+          limits:
+            memory: "64Mi"
+            cpu: "50m"
+      - name: wait-for-migration
+        image: alpine:latest
+        securityContext:
+          runAsUser: 65534
+          runAsGroup: 65534
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+        command:
+        - sh
+        - -c
+        - |
+          echo "Waiting for Hanko migration to complete..."
+          sleep 60
+          echo "Migration wait period completed"
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        resources:
+          requests:
+            memory: "16Mi"
+            cpu: "10m"
+          limits:
+            memory: "32Mi"
+            cpu: "25m"
+      containers:
+      - name: hanko
+        image: teamhanko/hanko:latest
+        securityContext:
+          runAsUser: 1001
+          runAsGroup: 1001
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+        command:
+        - hanko
+        - serve
+        - --config
+        - /etc/config/config.yaml
+        - all
+        ports:
+        - containerPort: 8000
+          name: public
+          protocol: TCP
+        - containerPort: 8001
+          name: admin
+          protocol: TCP
+        volumeMounts:
+        - name: hanko-config
+          mountPath: /etc/config
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+        env:
+        - name: PASSWORD_ENABLED
+          value: "true"
+        - name: HANKO_DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: hanko-postgres-dev-secrets
+              key: POSTGRES_PASSWORD
+        - name: HANKO_SERVER_PUBLIC_ADDRESS
+          value: "0.0.0.0:8000"
+        - name: HANKO_SERVER_ADMIN_ADDRESS
+          value: "0.0.0.0:8001"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /.well-known/health
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /.well-known/health
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+          successThreshold: 1
+        startupProbe:
+          httpGet:
+            path: /.well-known/health
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 60
+          successThreshold: 1
+      volumes:
+      - name: hanko-config
+        configMap:
+          name: hanko-dev-config
+          items:
+          - key: config.yaml
+            path: config.yaml
+          defaultMode: 0644
+      - name: tmp
+        emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - hanko
+              topologyKey: kubernetes.io/hostname
+      tolerations:
+      - key: "node.kubernetes.io/memory-pressure"
+        operator: "Exists"
+        effect: "NoSchedule"
+        tolerationSeconds: 300
+
+---
+# Hanko Public API Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: hanko-dev-service
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: hanko
+    environment: development
+    component: authentication
+    api-type: public
+spec:
+  selector:
+    app: hanko
+    environment: development
+  ports:
+  - name: public
+    port: 8000
+    targetPort: 8000
+    protocol: TCP
+  type: ClusterIP
+  sessionAffinity: None
+
+---
+# Hanko Admin API Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: hanko-admin-dev-service
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: hanko
+    environment: development
+    component: authentication
+    api-type: admin
+spec:
+  selector:
+    app: hanko
+    environment: development
+  ports:
+  - name: admin
+    port: 8001
+    targetPort: 8001
+    protocol: TCP
+  type: ClusterIP
+  sessionAffinity: None
+
+---
+# Pod Disruption Budget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: hanko-dev-pdb
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: hanko
+    environment: development
+    component: authentication
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: hanko
+      environment: development
+
+---
+# Horizontal Pod Autoscaler (optional for development)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hanko-dev-hpa
+  namespace: reciprocal-clubs-dev
+  labels:
+    app: hanko
+    environment: development
+    component: authentication
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hanko-dev
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60

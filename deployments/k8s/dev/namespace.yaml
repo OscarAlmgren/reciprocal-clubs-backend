@@ -1,0 +1,57 @@
+# =========================================================================
+# Kubernetes Development Namespace
+# =========================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: reciprocal-clubs-dev
+  labels:
+    name: reciprocal-clubs-dev
+    environment: development
+    project: reciprocal-clubs
+    managed-by: kubernetes
+    version: "1.0"
+  annotations:
+    description: "Development environment for Reciprocal Clubs microservices"
+    contact: "dev-team@reciprocal-clubs.com"
+    created-by: "claude-code"
+---
+# Resource Quotas for Development
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: reciprocal-clubs-dev-quota
+  namespace: reciprocal-clubs-dev
+spec:
+  hard:
+    requests.cpu: "10"
+    requests.memory: 20Gi
+    limits.cpu: "20"
+    limits.memory: 40Gi
+    persistentvolumeclaims: "10"
+    pods: "50"
+    services: "20"
+    secrets: "10"
+    configmaps: "10"
+---
+# Network Policy for Development (Permissive)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: reciprocal-clubs-dev-netpol
+  namespace: reciprocal-clubs-dev
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: reciprocal-clubs-dev
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+  egress:
+  - to: []
