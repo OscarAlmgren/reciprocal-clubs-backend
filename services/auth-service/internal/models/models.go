@@ -1,6 +1,7 @@
 package models
 
 import (
+	"strings"
 	"time"
 
 	"reciprocal-clubs-backend/pkg/shared/database"
@@ -20,9 +21,26 @@ type User struct {
 	FailedAttempts int        `json:"failed_attempts" gorm:"default:0"`
 	LockedUntil    *time.Time `json:"locked_until"`
 
+	// MFA Settings
+	MFAEnabled     bool   `json:"mfa_enabled" gorm:"default:false"`
+	MFASecret      string `json:"-" gorm:"column:mfa_secret"` // Hidden from JSON
+	MFABackupCodes string `json:"-" gorm:"column:mfa_backup_codes;type:text"` // Hidden from JSON
+	MFAMethod      string `json:"mfa_method" gorm:"default:'totp'"`
+	PhoneNumber    string `json:"phone_number"`
+	PhoneVerified  bool   `json:"phone_verified" gorm:"default:false"`
+
+	// Password Reset
+	PasswordResetToken     string     `json:"-" gorm:"column:password_reset_token"` // Hidden from JSON
+	PasswordResetExpiresAt *time.Time `json:"-" gorm:"column:password_reset_expires_at"` // Hidden from JSON
+
+	// Email Verification
+	EmailVerificationToken     string     `json:"-" gorm:"column:email_verification_token"` // Hidden from JSON
+	EmailVerificationExpiresAt *time.Time `json:"-" gorm:"column:email_verification_expires_at"` // Hidden from JSON
+
 	// Relationships
 	Roles    []UserRole    `json:"roles" gorm:"foreignKey:UserID"`
 	Sessions []UserSession `json:"sessions" gorm:"foreignKey:UserID"`
+	MFATokens []MFAToken    `json:"mfa_tokens" gorm:"foreignKey:UserID"`
 }
 
 type UserStatus string
@@ -161,6 +179,30 @@ type UserSession struct {
 	User User `json:"user" gorm:"foreignKey:UserID"`
 }
 
+// MFAToken represents MFA verification tokens and backup codes
+type MFAToken struct {
+	database.BaseModel
+	UserID      uint      `json:"user_id" gorm:"not null"`
+	TokenType   MFATokenType `json:"token_type" gorm:"not null"`
+	Token       string    `json:"-" gorm:"column:token;not null"` // Hidden from JSON
+	Used        bool      `json:"used" gorm:"default:false"`
+	UsedAt      *time.Time `json:"used_at"`
+	ExpiresAt   *time.Time `json:"expires_at"`
+	Metadata    map[string]interface{} `json:"metadata" gorm:"serializer:json"`
+
+	// Relationships
+	User User `json:"user" gorm:"foreignKey:UserID"`
+}
+
+type MFATokenType string
+
+const (
+	MFATokenTypeBackup       MFATokenType = "backup"
+	MFATokenTypeVerification MFATokenType = "verification"
+	MFATokenTypeSMS          MFATokenType = "sms"
+	MFATokenTypeEmail        MFATokenType = "email"
+)
+
 // AuditLog represents audit trail for authentication events
 type AuditLog struct {
 	database.BaseModel
@@ -173,7 +215,7 @@ type AuditLog struct {
 	UserAgent    string            `json:"user_agent" gorm:"type:text"`
 	Success      bool              `json:"success"`
 	ErrorMessage string            `json:"error_message" gorm:"type:text"`
-	Metadata     map[string]interface{} `json:"metadata" gorm:"type:jsonb"`
+	Metadata     map[string]interface{} `json:"metadata" gorm:"serializer:json"`
 
 	// Relationships
 	User *User `json:"user" gorm:"foreignKey:UserID"`
@@ -197,6 +239,17 @@ const (
 	AuditActionAccountUnlocked    AuditAction = "account_unlocked"
 	AuditActionPermissionGranted  AuditAction = "permission_granted"
 	AuditActionPermissionRevoked  AuditAction = "permission_revoked"
+	// MFA Actions
+	AuditActionMFAEnabled         AuditAction = "mfa_enabled"
+	AuditActionMFADisabled        AuditAction = "mfa_disabled"
+	AuditActionMFAVerification    AuditAction = "mfa_verification"
+	AuditActionMFABackupUsed      AuditAction = "mfa_backup_used"
+	// Password Reset Actions
+	AuditActionPasswordResetRequested AuditAction = "password_reset_requested"
+	AuditActionPasswordResetCompleted AuditAction = "password_reset_completed"
+	// Email Verification Actions
+	AuditActionEmailVerificationSent AuditAction = "email_verification_sent"
+	AuditActionEmailVerificationCompleted AuditAction = "email_verification_completed"
 )
 
 // UserWithRoles represents a user with their roles and permissions
@@ -287,6 +340,98 @@ func (s *UserSession) Invalidate() {
 
 func (s *UserSession) UpdateActivity() {
 	s.LastActivityAt = time.Now()
+}
+
+// Methods for User model (MFA related)
+
+func (u *User) EnableMFA(secret string, backupCodes []string) {
+	u.MFAEnabled = true
+	u.MFASecret = secret
+	u.MFABackupCodes = strings.Join(backupCodes, ",")
+}
+
+func (u *User) DisableMFA() {
+	u.MFAEnabled = false
+	u.MFASecret = ""
+	u.MFABackupCodes = ""
+}
+
+func (u *User) GetMFABackupCodes() []string {
+	if u.MFABackupCodes == "" {
+		return []string{}
+	}
+	return strings.Split(u.MFABackupCodes, ",")
+}
+
+func (u *User) UseBackupCode(code string) bool {
+	backupCodes := u.GetMFABackupCodes()
+	for i, backupCode := range backupCodes {
+		if backupCode == code {
+			// Remove the used code
+			backupCodes = append(backupCodes[:i], backupCodes[i+1:]...)
+			u.MFABackupCodes = strings.Join(backupCodes, ",")
+			return true
+		}
+	}
+	return false
+}
+
+func (u *User) SetPasswordResetToken(token string, expiry time.Time) {
+	u.PasswordResetToken = token
+	u.PasswordResetExpiresAt = &expiry
+}
+
+func (u *User) ClearPasswordResetToken() {
+	u.PasswordResetToken = ""
+	u.PasswordResetExpiresAt = nil
+}
+
+func (u *User) IsPasswordResetTokenValid(token string) bool {
+	if u.PasswordResetToken == "" || u.PasswordResetExpiresAt == nil {
+		return false
+	}
+	return u.PasswordResetToken == token && u.PasswordResetExpiresAt.After(time.Now())
+}
+
+func (u *User) SetEmailVerificationToken(token string, expiry time.Time) {
+	u.EmailVerificationToken = token
+	u.EmailVerificationExpiresAt = &expiry
+}
+
+func (u *User) ClearEmailVerificationToken() {
+	u.EmailVerificationToken = ""
+	u.EmailVerificationExpiresAt = nil
+}
+
+func (u *User) IsEmailVerificationTokenValid(token string) bool {
+	if u.EmailVerificationToken == "" || u.EmailVerificationExpiresAt == nil {
+		return false
+	}
+	return u.EmailVerificationToken == token && u.EmailVerificationExpiresAt.After(time.Now())
+}
+
+func (u *User) VerifyEmail() {
+	u.EmailVerified = true
+	u.ClearEmailVerificationToken()
+}
+
+// Methods for MFAToken model
+
+func (m *MFAToken) SetClubID(clubID uint) {
+	m.ClubID = clubID
+}
+
+func (m *MFAToken) IsExpired() bool {
+	if m.ExpiresAt == nil {
+		return false
+	}
+	return m.ExpiresAt.Before(time.Now())
+}
+
+func (m *MFAToken) MarkAsUsed() {
+	m.Used = true
+	now := time.Now()
+	m.UsedAt = &now
 }
 
 // Methods for AuditLog model

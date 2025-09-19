@@ -98,6 +98,44 @@ func (r *AuthRepository) GetUserByEmail(ctx context.Context, clubID uint, email 
 	return &user, nil
 }
 
+// GetUserByPasswordResetToken retrieves a user by password reset token
+func (r *AuthRepository) GetUserByPasswordResetToken(ctx context.Context, clubID uint, token string) (*models.User, error) {
+	var user models.User
+	if err := r.db.WithTenant(clubID).WithContext(ctx).
+		Where("password_reset_token = ? AND password_reset_expires_at > ?", token, time.Now()).
+		First(&user).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, errors.NotFound("Invalid or expired reset token", map[string]interface{}{
+				"club_id": clubID,
+			})
+		}
+		return nil, errors.Internal("Failed to get user by reset token", map[string]interface{}{
+			"club_id": clubID,
+		}, err)
+	}
+
+	return &user, nil
+}
+
+// GetUserByEmailVerificationToken retrieves a user by email verification token
+func (r *AuthRepository) GetUserByEmailVerificationToken(ctx context.Context, clubID uint, token string) (*models.User, error) {
+	var user models.User
+	if err := r.db.WithTenant(clubID).WithContext(ctx).
+		Where("email_verification_token = ? AND email_verification_expires_at > ?", token, time.Now()).
+		First(&user).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, errors.NotFound("Invalid or expired verification token", map[string]interface{}{
+				"club_id": clubID,
+			})
+		}
+		return nil, errors.Internal("Failed to get user by verification token", map[string]interface{}{
+			"club_id": clubID,
+		}, err)
+	}
+
+	return &user, nil
+}
+
 // GetUserByHankoID retrieves a user by Hanko user ID
 func (r *AuthRepository) GetUserByHankoID(ctx context.Context, clubID uint, hankoUserID string) (*models.User, error) {
 	var user models.User
@@ -889,6 +927,80 @@ func (r *AuthRepository) HealthCheck(ctx context.Context) error {
 }
 
 // Transaction support
+
+// MFA Token operations
+
+// CreateMFAToken creates a new MFA token
+func (r *AuthRepository) CreateMFAToken(ctx context.Context, token *models.MFAToken) error {
+	if err := r.db.WithTenant(token.ClubID).WithContext(ctx).Create(token).Error; err != nil {
+		r.logger.Error("Failed to create MFA token", map[string]interface{}{
+			"error":   err.Error(),
+			"user_id": token.UserID,
+			"type":    token.TokenType,
+		})
+		return errors.Internal("Failed to create MFA token", map[string]interface{}{
+			"user_id": token.UserID,
+		}, err)
+	}
+
+	return nil
+}
+
+// GetLatestMFAToken retrieves the latest MFA token for a user and type
+func (r *AuthRepository) GetLatestMFAToken(ctx context.Context, userID uint, tokenType models.MFATokenType) (*models.MFAToken, error) {
+	var token models.MFAToken
+	if err := r.db.WithContext(ctx).
+		Where("user_id = ? AND token_type = ?", userID, tokenType).
+		Order("created_at DESC").
+		First(&token).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, errors.NotFound("MFA token not found", map[string]interface{}{
+				"user_id":    userID,
+				"token_type": tokenType,
+			})
+		}
+		return nil, errors.Internal("Failed to get MFA token", map[string]interface{}{
+			"user_id":    userID,
+			"token_type": tokenType,
+		}, err)
+	}
+
+	return &token, nil
+}
+
+// UpdateMFAToken updates an MFA token
+func (r *AuthRepository) UpdateMFAToken(ctx context.Context, token *models.MFAToken) error {
+	if err := r.db.WithTenant(token.ClubID).WithContext(ctx).Save(token).Error; err != nil {
+		r.logger.Error("Failed to update MFA token", map[string]interface{}{
+			"error":    err.Error(),
+			"token_id": token.ID,
+		})
+		return errors.Internal("Failed to update MFA token", map[string]interface{}{
+			"token_id": token.ID,
+		}, err)
+	}
+
+	return nil
+}
+
+// InvalidateAllUserSessions invalidates all sessions for a user
+func (r *AuthRepository) InvalidateAllUserSessions(ctx context.Context, clubID, userID uint) error {
+	if err := r.db.WithTenant(clubID).WithContext(ctx).
+		Model(&models.UserSession{}).
+		Where("user_id = ?", userID).
+		Update("is_active", false).Error; err != nil {
+		r.logger.Error("Failed to invalidate user sessions", map[string]interface{}{
+			"error":   err.Error(),
+			"user_id": userID,
+			"club_id": clubID,
+		})
+		return errors.Internal("Failed to invalidate user sessions", map[string]interface{}{
+			"user_id": userID,
+		}, err)
+	}
+
+	return nil
+}
 
 // WithTransaction executes a function within a database transaction
 func (r *AuthRepository) WithTransaction(ctx context.Context, fn func(*AuthRepository) error) error {

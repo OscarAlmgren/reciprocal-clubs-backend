@@ -1,16 +1,19 @@
 # Auth Service
 
-A microservice that provides authentication and authorization functionality for the Reciprocal Clubs platform using Hanko passkey integration.
+🚀 **PRODUCTION READY** - A comprehensive microservice providing enterprise-grade authentication and authorization functionality for the Reciprocal Clubs platform.
 
 ## Features
 
-- **Passkey Authentication**: WebAuthn/FIDO2 authentication via Hanko integration
-- **User Management**: User registration, profile management, and role-based access control
-- **Session Management**: Secure session handling with configurable expiration
-- **Multi-tenant Support**: Club-based isolation for users and permissions
-- **Event-driven Architecture**: NATS integration for publishing authentication events
-- **Comprehensive Audit Logging**: Track all authentication and authorization activities
-- **Health Monitoring**: Health checks, metrics, and observability
+- **🔐 Passkey Authentication**: WebAuthn/FIDO2 passwordless authentication via Hanko integration
+- **📱 Multi-Factor Authentication (MFA)**: TOTP, SMS, Email, and backup codes for enhanced security
+- **🔑 Password Management**: Secure password reset, strength validation, and breach detection
+- **✉️ Email Verification**: Token-based email verification for account security
+- **👥 User Management**: Complete user registration, profile management, and role-based access control
+- **🎫 Session Management**: Secure JWT session handling with configurable expiration
+- **🏢 Multi-tenant Support**: Club-based isolation for users and permissions
+- **⚡ Event-driven Architecture**: NATS integration for publishing authentication events
+- **📋 Comprehensive Audit Logging**: Track all authentication and authorization activities
+- **📊 Health Monitoring**: Advanced health checks, metrics, and observability
 
 ## Architecture
 
@@ -128,6 +131,27 @@ docker-compose down
 - `POST /auth/passkey/register/initiate` - Register additional passkey
 - `POST /auth/passkey/register/complete` - Complete additional passkey registration
 
+### Multi-Factor Authentication (MFA)
+
+- `POST /auth/mfa/setup` - Setup MFA with TOTP authenticator app
+- `POST /auth/mfa/verify` - Verify MFA code (TOTP, SMS, Email, or backup)
+- `POST /auth/mfa/disable` - Disable MFA for user account
+- `GET /auth/mfa/backup-codes` - Generate new backup codes
+- `POST /auth/mfa/sms/send` - Send SMS verification code
+- `POST /auth/mfa/email/send` - Send email verification code
+
+### Password Management
+
+- `POST /auth/password/reset/request` - Request password reset via email
+- `POST /auth/password/reset/confirm` - Confirm password reset with token
+- `POST /auth/password/change` - Change password (authenticated users)
+- `GET /auth/password/strength` - Check password strength score
+
+### Email Verification
+
+- `POST /auth/email/verify/send` - Send email verification token
+- `POST /auth/email/verify/confirm` - Confirm email verification with token
+
 ### User Management (Authentication Required)
 
 - `GET /users/{clubId}/{userId}` - Get user details with roles and permissions
@@ -189,6 +213,24 @@ The service also exposes comprehensive gRPC endpoints for inter-service communic
 - `ValidateSession` - Session token validation
 - `Logout` - User logout and session invalidation
 
+### Multi-Factor Authentication Services
+- `SetupMFA` - Setup MFA with TOTP authenticator app
+- `VerifyMFA` - Verify MFA codes (TOTP, SMS, Email, backup)
+- `DisableMFA` - Disable MFA for user account
+- `GenerateBackupCodes` - Generate new MFA backup codes
+- `SendSMSCode` - Send SMS verification code
+- `SendEmailCode` - Send email verification code
+
+### Password Management Services
+- `RequestPasswordReset` - Request password reset via email
+- `ConfirmPasswordReset` - Confirm password reset with token
+- `ChangePassword` - Change user password (authenticated)
+- `CheckPasswordStrength` - Validate password strength
+
+### Email Verification Services
+- `SendEmailVerification` - Send email verification token
+- `ConfirmEmailVerification` - Confirm email verification
+
 ### User Management Services
 - `GetUserWithRoles` - Get user data with roles and permissions
 - `UpdateUser` - Update user profile information
@@ -226,6 +268,105 @@ The service also exposes comprehensive gRPC endpoints for inter-service communic
 - `HealthCheck` - Service health check
 - `GetMetrics` - Service metrics and statistics
 
+## API Examples
+
+### Complete MFA Setup Flow
+
+```bash
+# 1. Setup MFA for a user (returns QR code URL and secret)
+curl -X POST http://localhost:8080/auth/mfa/setup \
+  -H "Authorization: Bearer <session_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "club_id": "club-123",
+    "user_id": "user-456"
+  }'
+
+# Response:
+{
+  "secret": "JBSWY3DPEHPK3PXP",
+  "qr_code_url": "otpauth://totp/Reciprocal%20Clubs:user@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Reciprocal%20Clubs",
+  "backup_codes": ["ABCD-EFGH", "IJKL-MNOP", "QRST-UVWX"]
+}
+
+# 2. Verify MFA setup with TOTP code
+curl -X POST http://localhost:8080/auth/mfa/verify \
+  -H "Authorization: Bearer <session_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "club_id": "club-123",
+    "user_id": "user-456",
+    "code": "123456",
+    "code_type": "totp"
+  }'
+```
+
+### Password Reset Flow
+
+```bash
+# 1. Request password reset
+curl -X POST http://localhost:8080/auth/password/reset/request \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "club_id": "club-123"
+  }'
+
+# 2. Confirm password reset with token from email
+curl -X POST http://localhost:8080/auth/password/reset/confirm \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "reset-token-from-email",
+    "new_password": "NewSecurePassword123!",
+    "club_id": "club-123"
+  }'
+```
+
+### Email Verification Flow
+
+```bash
+# 1. Send email verification
+curl -X POST http://localhost:8080/auth/email/verify/send \
+  -H "Authorization: Bearer <session_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "club_id": "club-123",
+    "user_id": "user-456"
+  }'
+
+# 2. Confirm email verification
+curl -X POST http://localhost:8080/auth/email/verify/confirm \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "verification-token-from-email",
+    "club_id": "club-123"
+  }'
+```
+
+### MFA Verification During Login
+
+```bash
+# Login with MFA verification
+curl -X POST http://localhost:8080/auth/mfa/verify \
+  -H "Content-Type: application/json" \
+  -d '{
+    "club_id": "club-123",
+    "user_id": "user-456",
+    "code": "123456",
+    "code_type": "totp"
+  }'
+
+# Or use backup code
+curl -X POST http://localhost:8080/auth/mfa/verify \
+  -H "Content-Type: application/json" \
+  -d '{
+    "club_id": "club-123",
+    "user_id": "user-456",
+    "code": "ABCD-EFGH",
+    "code_type": "backup"
+  }'
+```
+
 ## Configuration
 
 The service supports configuration through:
@@ -236,30 +377,53 @@ The service supports configuration through:
 
 See `config.yaml` for all available configuration options.
 
+### MFA Configuration
+
+Additional environment variables for MFA features:
+
+```bash
+# MFA Settings
+AUTH_SERVICE_MFA_ISSUER=Reciprocal Clubs
+AUTH_SERVICE_MFA_TOTP_SKEW=1
+AUTH_SERVICE_MFA_BACKUP_CODES_COUNT=8
+
+# SMS Provider (optional)
+AUTH_SERVICE_SMS_PROVIDER=twilio
+AUTH_SERVICE_SMS_API_KEY=your-sms-api-key
+AUTH_SERVICE_SMS_FROM_NUMBER=+1234567890
+
+# Email Provider (optional)
+AUTH_SERVICE_EMAIL_PROVIDER=sendgrid
+AUTH_SERVICE_EMAIL_API_KEY=your-email-api-key
+AUTH_SERVICE_EMAIL_FROM_ADDRESS=noreply@reciprocalclubs.com
+```
+
 ## Database Migrations
 
 The service uses GORM AutoMigrate to handle database schema changes. Migrations run automatically on startup when `database.auto_migrate` is enabled.
 
 ### Models
 
-- `User` - User accounts with Hanko integration
+- `User` - User accounts with Hanko, MFA, and password reset integration
 - `Club` - Multi-tenant organizations
 - `Role` - User roles within clubs
 - `Permission` - Granular permissions for actions
 - `UserRole` - Many-to-many relationship between users and roles
 - `RolePermission` - Many-to-many relationship between roles and permissions
 - `UserSession` - Active user sessions
-- `AuditLog` - Audit trail for all actions
+- `MFAToken` - MFA verification tokens (SMS, Email)
+- `AuditLog` - Comprehensive audit trail for all actions
 
 ## Event Publishing
 
 The service publishes events to NATS for:
 
-- User registration
-- User login/logout
-- Role assignments
-- Permission changes
-- Security events
+- User registration and email verification
+- User login/logout and session management
+- MFA setup, verification, and security events
+- Password reset requests and confirmations
+- Role assignments and permission changes
+- Security events and audit trail
 
 Events are published to subjects:
 - `users.events` - User lifecycle events
@@ -268,12 +432,17 @@ Events are published to subjects:
 
 ## Security Features
 
-- **Passkey Authentication**: FIDO2/WebAuthn for passwordless authentication
-- **Session Management**: Secure session tokens with configurable expiration
-- **Rate Limiting**: Protection against brute force attacks
-- **Audit Logging**: Comprehensive logging of all security events
-- **RBAC**: Role-based access control with granular permissions
-- **Multi-tenant Isolation**: Club-based data segregation
+- **🔐 Passkey Authentication**: FIDO2/WebAuthn for passwordless authentication
+- **📱 Multi-Factor Authentication**: TOTP, SMS, Email, and backup codes
+- **🔑 Advanced Password Security**: bcrypt hashing, strength validation, breach detection
+- **✉️ Email Verification**: Secure token-based email confirmation
+- **🎫 Session Management**: Secure JWT session tokens with configurable expiration
+- **🛡️ Rate Limiting**: Advanced protection against brute force attacks
+- **📋 Comprehensive Audit Logging**: Real-time logging of all security events
+- **🔒 RBAC**: Role-based access control with granular permissions
+- **🏢 Multi-tenant Isolation**: Club-based data segregation and security
+- **⚡ Circuit Breakers**: Protection against external service failures
+- **🔍 Security Monitoring**: Real-time threat detection and alerting
 
 ## Monitoring & Observability
 
@@ -290,9 +459,12 @@ The service exposes comprehensive Prometheus metrics on `/metrics`:
 
 #### Auth Service Specific Metrics
 - **Authentication Metrics**: Login attempts, successes, failures by method and club
+- **MFA Metrics**: Setup rates, verification attempts, backup code usage, method preferences
+- **Password Security**: Reset requests, strength scores, breach detection hits
+- **Email Verification**: Verification rates, bounce rates, delivery success
 - **User Management**: Registration counts, active users, suspended users
 - **Passkey Operations**: Initiation/completion rates, success rates, duration
-- **Security Events**: Failed logins, suspicious activities, rate limit hits
+- **Security Events**: Failed logins, suspicious activities, rate limit hits, MFA bypass attempts
 - **Role & Permission**: Role assignments, permission checks, authorization failures
 - **External Service**: Hanko API calls, response times, error rates
 - **Session Management**: Active sessions, session duration, logout events
@@ -327,15 +499,21 @@ auth-service/
 │   │   ├── grpc_types.go      # gRPC type conversions
 │   │   └── http.go            # HTTP REST API handlers
 │   ├── hanko/                  # Hanko client integration
+│   ├── mfa/                    # Multi-Factor Authentication service
+│   │   ├── mfa.go             # TOTP, SMS, Email, backup codes
+│   │   └── mfa_test.go        # Comprehensive MFA tests
+│   ├── password/               # Password management service
+│   │   ├── password.go        # Hashing, validation, reset tokens
+│   │   └── password_test.go   # Password security tests
 │   ├── metrics/                # Auth-specific Prometheus metrics
 │   │   └── auth_metrics.go    # 25+ auth service metrics
 │   ├── middleware/             # Production middleware
 │   │   ├── circuitbreaker.go  # Circuit breaker for external services
 │   │   ├── instrumentation.go # gRPC instrumentation & logging
 │   │   └── ratelimit.go       # Rate limiting protection
-│   ├── models/                 # Database models
-│   ├── repository/             # Data access layer
-│   ├── service/                # Business logic layer
+│   ├── models/                 # Database models with MFA/password fields
+│   ├── repository/             # Data access layer with MFA/email support
+│   ├── service/                # Business logic layer with complete auth
 │   └── testutil/               # Testing utilities and mocks
 ├── proto/                      # Protocol Buffer definitions
 │   └── auth.proto             # gRPC service definitions
@@ -378,10 +556,13 @@ go tool cover -html=coverage.out
 The service includes comprehensive test coverage for:
 
 - **Repository Layer**: Database operations with SQLite in-memory testing
-- **Service Layer**: Business logic with mocked dependencies
-- **Handler Layer**: HTTP and gRPC endpoints with test servers
-- **Integration Tests**: End-to-end testing with real dependencies
-- **Mock Testing**: Generated mocks for external services (Hanko, NATS)
+- **Service Layer**: Business logic with mocked dependencies including MFA and password services
+- **MFA Layer**: Complete TOTP, SMS, Email, and backup code testing with security validation
+- **Password Layer**: Password hashing, strength validation, reset workflow, and breach detection
+- **Handler Layer**: HTTP and gRPC endpoints with test servers including new auth features
+- **Integration Tests**: End-to-end testing with real dependencies and complete auth flows
+- **Security Testing**: Comprehensive testing of all security features and edge cases
+- **Mock Testing**: Generated mocks for external services (Hanko, NATS, MFA providers)
 
 #### Test Utilities
 

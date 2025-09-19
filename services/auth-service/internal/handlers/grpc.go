@@ -347,6 +347,133 @@ func (s *AuthGRPCServer) GetAuditLogs(ctx context.Context, req *pb.GetAuditLogsR
 	}, nil
 }
 
+// MFA Methods
+
+func (s *AuthGRPCServer) SetupMFA(ctx context.Context, req *pb.SetupMFARequest) (*pb.SetupMFAResponse, error) {
+	serviceReq := &service.MFASetupRequest{
+		UserID: uint(req.UserId),
+		ClubID: uint(req.ClubId),
+		Method: req.Method,
+	}
+
+	response, err := s.service.SetupMFA(ctx, serviceReq)
+	if err != nil {
+		return nil, s.handleError(err)
+	}
+
+	return &pb.SetupMFAResponse{
+		Secret:      response.Secret,
+		QrCodeUrl:   response.QRCodeURL,
+		BackupCodes: response.BackupCodes,
+		Success:     response.Success,
+		Message:     response.Message,
+	}, nil
+}
+
+func (s *AuthGRPCServer) VerifyMFA(ctx context.Context, req *pb.VerifyMFARequest) (*pb.VerifyMFAResponse, error) {
+	serviceReq := &service.MFAVerifyRequest{
+		UserID: uint(req.UserId),
+		ClubID: uint(req.ClubId),
+		Code:   req.Code,
+		Method: req.Method,
+	}
+
+	response, err := s.service.VerifyMFA(ctx, serviceReq)
+	if err != nil {
+		return nil, s.handleError(err)
+	}
+
+	return &pb.VerifyMFAResponse{
+		Success: response.Success,
+		Message: response.Message,
+	}, nil
+}
+
+func (s *AuthGRPCServer) DisableMFA(ctx context.Context, req *pb.DisableMFARequest) (*pb.DisableMFAResponse, error) {
+	err := s.service.DisableMFA(ctx, uint(req.UserId), uint(req.ClubId))
+	if err != nil {
+		return nil, s.handleError(err)
+	}
+
+	return &pb.DisableMFAResponse{
+		Success: true,
+		Message: "MFA disabled successfully",
+	}, nil
+}
+
+// Password Reset Methods
+
+func (s *AuthGRPCServer) RequestPasswordReset(ctx context.Context, req *pb.RequestPasswordResetRequest) (*pb.RequestPasswordResetResponse, error) {
+	serviceReq := &service.PasswordResetRequest{
+		Email:    req.Email,
+		ClubSlug: req.ClubSlug,
+	}
+
+	response, err := s.service.RequestPasswordReset(ctx, serviceReq)
+	if err != nil {
+		return nil, s.handleError(err)
+	}
+
+	return &pb.RequestPasswordResetResponse{
+		Success: response.Success,
+		Message: response.Message,
+	}, nil
+}
+
+func (s *AuthGRPCServer) ConfirmPasswordReset(ctx context.Context, req *pb.ConfirmPasswordResetRequest) (*pb.ConfirmPasswordResetResponse, error) {
+	serviceReq := &service.PasswordResetConfirmRequest{
+		Token:       req.Token,
+		NewPassword: req.NewPassword,
+		ClubSlug:    req.ClubSlug,
+	}
+
+	response, err := s.service.ConfirmPasswordReset(ctx, serviceReq)
+	if err != nil {
+		return nil, s.handleError(err)
+	}
+
+	return &pb.ConfirmPasswordResetResponse{
+		Success: response.Success,
+		Message: response.Message,
+	}, nil
+}
+
+// Email Verification Methods
+
+func (s *AuthGRPCServer) RequestEmailVerification(ctx context.Context, req *pb.RequestEmailVerificationRequest) (*pb.RequestEmailVerificationResponse, error) {
+	serviceReq := &service.EmailVerificationRequest{
+		Email:    req.Email,
+		ClubSlug: req.ClubSlug,
+	}
+
+	response, err := s.service.RequestEmailVerification(ctx, serviceReq)
+	if err != nil {
+		return nil, s.handleError(err)
+	}
+
+	return &pb.RequestEmailVerificationResponse{
+		Success: response.Success,
+		Message: response.Message,
+	}, nil
+}
+
+func (s *AuthGRPCServer) ConfirmEmailVerification(ctx context.Context, req *pb.ConfirmEmailVerificationRequest) (*pb.ConfirmEmailVerificationResponse, error) {
+	serviceReq := &service.EmailVerificationConfirmRequest{
+		Token:    req.Token,
+		ClubSlug: req.ClubSlug,
+	}
+
+	response, err := s.service.ConfirmEmailVerification(ctx, serviceReq)
+	if err != nil {
+		return nil, s.handleError(err)
+	}
+
+	return &pb.ConfirmEmailVerificationResponse{
+		Success: response.Success,
+		Message: response.Message,
+	}, nil
+}
+
 func (s *AuthGRPCServer) HealthCheck(ctx context.Context, req *pb.HealthCheckRequest) (*pb.HealthCheckResponse, error) {
 	err := s.service.HealthCheck(ctx)
 	if err != nil {
