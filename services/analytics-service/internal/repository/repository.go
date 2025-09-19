@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -25,6 +26,24 @@ type Repository interface {
 	GetRealtimeMetrics(clubID string) (map[string]interface{}, error)
 	CleanupOldEvents(olderThan time.Time) error
 
+	// Advanced analytics
+	GetTrendAnalysis(clubID string, metricName string, timeRange TimeRange) (map[string]interface{}, error)
+	GetCorrelationAnalysis(clubID string, metricNames []string, timeRange TimeRange) (map[string]interface{}, error)
+	GetPredictiveAnalytics(clubID string, metricName string, forecastDays int) (map[string]interface{}, error)
+	GetAnomalyDetection(clubID string, metricName string, timeRange TimeRange) (map[string]interface{}, error)
+
+	// Dashboard operations
+	CreateDashboard(dashboard *Dashboard) error
+	GetDashboard(dashboardID uint) (*Dashboard, error)
+	UpdateDashboard(dashboard *Dashboard) error
+	DeleteDashboard(dashboardID uint) error
+	ListDashboards(clubID string, limit, offset int) ([]*Dashboard, error)
+
+	// Export operations
+	ExportEvents(clubID string, timeRange TimeRange, format string) ([]byte, error)
+	ExportMetrics(clubID string, timeRange TimeRange, format string) ([]byte, error)
+	ExportReports(clubID string, format string) ([]byte, error)
+
 	// Example operations (replace with actual models)
 	CreateExample(example *models.Example) error
 	GetExampleByID(id uint) (*models.Example, error)
@@ -42,7 +61,7 @@ type AnalyticsEvent struct {
 	ID        uint                   `json:"id" gorm:"primaryKey"`
 	ClubID    string                 `json:"club_id" gorm:"index;size:255"`
 	EventType string                 `json:"event_type" gorm:"size:100"`
-	Data      map[string]interface{} `json:"data" gorm:"type:jsonb"`
+	Data      map[string]interface{} `json:"data" gorm:"serializer:json"`
 	Timestamp time.Time              `json:"timestamp" gorm:"index"`
 	CreatedAt time.Time              `json:"created_at"`
 }
@@ -52,7 +71,7 @@ type AnalyticsMetric struct {
 	ClubID      string    `json:"club_id" gorm:"index;size:255"`
 	MetricName  string    `json:"metric_name" gorm:"size:100"`
 	MetricValue float64   `json:"metric_value"`
-	Tags        map[string]interface{} `json:"tags" gorm:"type:jsonb"`
+	Tags        map[string]interface{} `json:"tags" gorm:"serializer:json"`
 	Timestamp   time.Time `json:"timestamp" gorm:"index"`
 	CreatedAt   time.Time `json:"created_at"`
 }
@@ -62,7 +81,7 @@ type AnalyticsReport struct {
 	ClubID     string                 `json:"club_id" gorm:"index;size:255"`
 	ReportType string                 `json:"report_type" gorm:"size:100"`
 	Title      string                 `json:"title" gorm:"size:255"`
-	Data       map[string]interface{} `json:"data" gorm:"type:jsonb"`
+	Data       map[string]interface{} `json:"data" gorm:"serializer:json"`
 	GeneratedAt time.Time             `json:"generated_at"`
 	CreatedAt   time.Time             `json:"created_at"`
 }
@@ -77,6 +96,22 @@ func (AnalyticsMetric) TableName() string {
 
 func (AnalyticsReport) TableName() string {
 	return "analytics_reports"
+}
+
+type Dashboard struct {
+	ID          uint                   `json:"id" gorm:"primaryKey"`
+	ClubID      string                 `json:"club_id" gorm:"index;size:255"`
+	Name        string                 `json:"name" gorm:"size:255"`
+	Description string                 `json:"description" gorm:"type:text"`
+	Panels      map[string]interface{} `json:"panels" gorm:"serializer:json"`
+	IsPublic    bool                   `json:"is_public" gorm:"default:false"`
+	CreatedBy   string                 `json:"created_by" gorm:"size:255"`
+	CreatedAt   time.Time              `json:"created_at"`
+	UpdatedAt   time.Time              `json:"updated_at"`
+}
+
+func (Dashboard) TableName() string {
+	return "analytics_dashboards"
 }
 
 type repository struct {
@@ -301,6 +336,269 @@ func (r *repository) CleanupOldEvents(olderThan time.Time) error {
 	}
 
 	return nil
+}
+
+// Advanced analytics implementations
+func (r *repository) GetTrendAnalysis(clubID string, metricName string, timeRange TimeRange) (map[string]interface{}, error) {
+	// Mock implementation - in production would use statistical analysis
+	var dataPoints []struct {
+		Timestamp time.Time `json:"timestamp"`
+		Value     float64   `json:"value"`
+	}
+
+	// Get metric values over time
+	if err := r.db.Model(&AnalyticsMetric{}).
+		Select("timestamp, AVG(metric_value) as value").
+		Where("club_id = ? AND metric_name = ? AND timestamp BETWEEN ? AND ?", clubID, metricName, timeRange.Start, timeRange.End).
+		Group("DATE_TRUNC('hour', timestamp)").
+		Order("timestamp ASC").
+		Scan(&dataPoints).Error; err != nil {
+		return nil, fmt.Errorf("failed to get trend data: %w", err)
+	}
+
+	// Calculate simple trend
+	direction := "stable"
+	slope := 0.0
+	if len(dataPoints) > 1 {
+		firstValue := dataPoints[0].Value
+		lastValue := dataPoints[len(dataPoints)-1].Value
+		if lastValue > firstValue*1.1 {
+			direction = "increasing"
+			slope = (lastValue - firstValue) / float64(len(dataPoints))
+		} else if lastValue < firstValue*0.9 {
+			direction = "decreasing"
+			slope = (lastValue - firstValue) / float64(len(dataPoints))
+		}
+	}
+
+	return map[string]interface{}{
+		"data_points": dataPoints,
+		"summary": map[string]interface{}{
+			"direction":      direction,
+			"slope":          slope,
+			"confidence":     0.85,
+			"interpretation": fmt.Sprintf("Metric %s is %s", metricName, direction),
+		},
+	}, nil
+}
+
+func (r *repository) GetCorrelationAnalysis(clubID string, metricNames []string, timeRange TimeRange) (map[string]interface{}, error) {
+	// Mock implementation - in production would calculate actual correlations
+	correlations := make(map[string]float64)
+	significantPairs := []map[string]interface{}{}
+
+	for i, metric1 := range metricNames {
+		for j, metric2 := range metricNames {
+			if i < j {
+				key := fmt.Sprintf("%s-%s", metric1, metric2)
+				correlation := 0.5 + (float64(i+j)*0.1) // Mock correlation
+				correlations[key] = correlation
+
+				if correlation > 0.7 {
+					significantPairs = append(significantPairs, map[string]interface{}{
+						"metric1":     metric1,
+						"metric2":     metric2,
+						"correlation": correlation,
+						"significance": 0.95,
+					})
+				}
+			}
+		}
+	}
+
+	return map[string]interface{}{
+		"correlations":     correlations,
+		"significant_pairs": significantPairs,
+	}, nil
+}
+
+func (r *repository) GetPredictiveAnalytics(clubID string, metricName string, forecastDays int) (map[string]interface{}, error) {
+	// Mock implementation - in production would use ML models
+	predictions := []map[string]interface{}{}
+	baseValue := 100.0
+
+	for i := 0; i < forecastDays; i++ {
+		timestamp := time.Now().AddDate(0, 0, i+1)
+		predictedValue := baseValue + float64(i)*2.5
+		upperBound := predictedValue * 1.2
+		lowerBound := predictedValue * 0.8
+
+		predictions = append(predictions, map[string]interface{}{
+			"timestamp":        timestamp,
+			"predicted_value":  predictedValue,
+			"confidence_upper": upperBound,
+			"confidence_lower": lowerBound,
+		})
+	}
+
+	return map[string]interface{}{
+		"predictions": predictions,
+		"summary": map[string]interface{}{
+			"model_type":       "linear_trend",
+			"accuracy":         0.82,
+			"confidence_level": "95%",
+		},
+	}, nil
+}
+
+func (r *repository) GetAnomalyDetection(clubID string, metricName string, timeRange TimeRange) (map[string]interface{}, error) {
+	// Mock implementation - in production would use statistical anomaly detection
+	anomalies := []map[string]interface{}{
+		{
+			"timestamp":      time.Now().Add(-2 * time.Hour),
+			"value":          150.0,
+			"expected_value": 100.0,
+			"anomaly_score":  0.85,
+			"severity":       "medium",
+		},
+		{
+			"timestamp":      time.Now().Add(-6 * time.Hour),
+			"value":          200.0,
+			"expected_value": 105.0,
+			"anomaly_score":  0.95,
+			"severity":       "high",
+		},
+	}
+
+	summary := map[string]interface{}{
+		"total_anomalies":  len(anomalies),
+		"high_severity":    1,
+		"medium_severity":  1,
+		"low_severity":     0,
+	}
+
+	return map[string]interface{}{
+		"anomalies": anomalies,
+		"summary":   summary,
+	}, nil
+}
+
+// Dashboard operations
+func (r *repository) CreateDashboard(dashboard *Dashboard) error {
+	if err := r.db.Create(dashboard).Error; err != nil {
+		r.logger.Error("Failed to create dashboard", map[string]interface{}{"error": err.Error()})
+		return fmt.Errorf("failed to create dashboard: %w", err)
+	}
+
+	r.logger.Info("Created dashboard", map[string]interface{}{"dashboard_id": dashboard.ID, "club_id": dashboard.ClubID})
+	return nil
+}
+
+func (r *repository) GetDashboard(dashboardID uint) (*Dashboard, error) {
+	var dashboard Dashboard
+	if err := r.db.First(&dashboard, dashboardID).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("dashboard not found")
+		}
+		r.logger.Error("Failed to get dashboard", map[string]interface{}{"error": err.Error()})
+		return nil, fmt.Errorf("failed to get dashboard: %w", err)
+	}
+	return &dashboard, nil
+}
+
+func (r *repository) UpdateDashboard(dashboard *Dashboard) error {
+	if err := r.db.Save(dashboard).Error; err != nil {
+		r.logger.Error("Failed to update dashboard", map[string]interface{}{"error": err.Error()})
+		return fmt.Errorf("failed to update dashboard: %w", err)
+	}
+
+	r.logger.Info("Updated dashboard", map[string]interface{}{"dashboard_id": dashboard.ID})
+	return nil
+}
+
+func (r *repository) DeleteDashboard(dashboardID uint) error {
+	if err := r.db.Delete(&Dashboard{}, dashboardID).Error; err != nil {
+		r.logger.Error("Failed to delete dashboard", map[string]interface{}{"error": err.Error()})
+		return fmt.Errorf("failed to delete dashboard: %w", err)
+	}
+
+	r.logger.Info("Deleted dashboard", map[string]interface{}{"dashboard_id": dashboardID})
+	return nil
+}
+
+func (r *repository) ListDashboards(clubID string, limit, offset int) ([]*Dashboard, error) {
+	var dashboards []*Dashboard
+	query := r.db.Where("club_id = ? OR is_public = ?", clubID, true)
+
+	if err := query.Limit(limit).Offset(offset).Order("created_at DESC").Find(&dashboards).Error; err != nil {
+		r.logger.Error("Failed to list dashboards", map[string]interface{}{"error": err.Error()})
+		return nil, fmt.Errorf("failed to list dashboards: %w", err)
+	}
+
+	return dashboards, nil
+}
+
+// Export operations
+func (r *repository) ExportEvents(clubID string, timeRange TimeRange, format string) ([]byte, error) {
+	events, err := r.GetEventsByClub(clubID, timeRange)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get events for export: %w", err)
+	}
+
+	switch format {
+	case "json":
+		return json.Marshal(events)
+	case "csv":
+		// Mock CSV export - in production would use proper CSV library
+		csv := "id,club_id,event_type,timestamp,created_at\n"
+		for _, event := range events {
+			csv += fmt.Sprintf("%d,%s,%s,%s,%s\n",
+				event.ID, event.ClubID, event.EventType,
+				event.Timestamp.Format(time.RFC3339),
+				event.CreatedAt.Format(time.RFC3339))
+		}
+		return []byte(csv), nil
+	default:
+		return nil, fmt.Errorf("unsupported export format: %s", format)
+	}
+}
+
+func (r *repository) ExportMetrics(clubID string, timeRange TimeRange, format string) ([]byte, error) {
+	metrics, err := r.GetMetricsByClub(clubID, timeRange)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get metrics for export: %w", err)
+	}
+
+	switch format {
+	case "json":
+		return json.Marshal(metrics)
+	case "csv":
+		// Mock CSV export
+		csv := "id,club_id,metric_name,metric_value,timestamp,created_at\n"
+		for _, metric := range metrics {
+			csv += fmt.Sprintf("%d,%s,%s,%.2f,%s,%s\n",
+				metric.ID, metric.ClubID, metric.MetricName, metric.MetricValue,
+				metric.Timestamp.Format(time.RFC3339),
+				metric.CreatedAt.Format(time.RFC3339))
+		}
+		return []byte(csv), nil
+	default:
+		return nil, fmt.Errorf("unsupported export format: %s", format)
+	}
+}
+
+func (r *repository) ExportReports(clubID string, format string) ([]byte, error) {
+	reports, err := r.GetReportsByClub(clubID, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get reports for export: %w", err)
+	}
+
+	switch format {
+	case "json":
+		return json.Marshal(reports)
+	case "csv":
+		// Mock CSV export
+		csv := "id,club_id,report_type,title,generated_at,created_at\n"
+		for _, report := range reports {
+			csv += fmt.Sprintf("%d,%s,%s,%s,%s,%s\n",
+				report.ID, report.ClubID, report.ReportType, report.Title,
+				report.GeneratedAt.Format(time.RFC3339),
+				report.CreatedAt.Format(time.RFC3339))
+		}
+		return []byte(csv), nil
+	default:
+		return nil, fmt.Errorf("unsupported export format: %s", format)
+	}
 }
 
 // Example operations (replace with actual business logic)
