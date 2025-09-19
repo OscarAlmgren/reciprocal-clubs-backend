@@ -4,13 +4,22 @@ go 1.25
 
 require (
 	github.com/gorilla/mux v1.8.1
+	github.com/stretchr/testify v1.10.0
 	google.golang.org/grpc v1.75.1
-	gorm.io/gorm v1.25.5
+	gorm.io/driver/sqlite v1.6.0
+	gorm.io/gorm v1.30.0
 	reciprocal-clubs-backend/pkg/shared/config v0.0.0
 	reciprocal-clubs-backend/pkg/shared/database v0.0.0
 	reciprocal-clubs-backend/pkg/shared/logging v0.0.0
 	reciprocal-clubs-backend/pkg/shared/messaging v0.0.0
 	reciprocal-clubs-backend/pkg/shared/monitoring v0.0.0
+)
+
+require (
+	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/mattn/go-sqlite3 v1.14.22 // indirect
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
+	github.com/stretchr/objx v0.5.2 // indirect
 )
 
 require (
@@ -55,7 +64,7 @@ require (
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250707201910-8d1bb00bc6a7 // indirect
-	google.golang.org/protobuf v1.36.6 // indirect
+	google.golang.org/protobuf v1.36.6
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/driver/postgres v1.5.4 // indirect
