@@ -82,7 +82,7 @@ func main() {
 
 	// Initialize handlers
 	httpHandler := handlers.NewHTTPHandler(authService, logger, monitor)
-	grpcHandler := handlers.NewGRPCHandler(authService, logger, monitor)
+	grpcHandler := handlers.NewAuthGRPCServer(authService, logger, monitor)
 
 	// Start HTTP server
 	httpServer := startHTTPServer(cfg, httpHandler, logger)
@@ -160,7 +160,7 @@ func startHTTPServer(cfg *config.Config, handler *handlers.HTTPHandler, logger l
 	return server
 }
 
-func startGRPCServer(cfg *config.Config, handler *handlers.AuthServiceServer, logger logging.Logger) (*grpc.Server, net.Listener) {
+func startGRPCServer(cfg *config.Config, handler *handlers.AuthGRPCServer, logger logging.Logger) (*grpc.Server, net.Listener) {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Service.GRPCPort))
 	if err != nil {
 		logger.Fatal("Failed to listen on gRPC port", map[string]interface{}{

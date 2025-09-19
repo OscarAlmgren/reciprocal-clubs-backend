@@ -1,0 +1,524 @@
+syntax = "proto3";
+
+package auth;
+
+option go_package = "reciprocal-clubs-backend/services/auth-service/proto/auth";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+// Auth Service - Complete authentication and authorization service
+service AuthService {
+  // User Registration and Management
+  rpc RegisterUser(RegisterUserRequest) returns (RegisterUserResponse);
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
+  rpc SuspendUser(SuspendUserRequest) returns (SuspendUserResponse);
+  rpc ActivateUser(ActivateUserRequest) returns (ActivateUserResponse);
+  rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
+
+  // Authentication
+  rpc InitiatePasskeyLogin(InitiatePasskeyLoginRequest) returns (InitiatePasskeyLoginResponse);
+  rpc CompletePasskeyLogin(CompletePasskeyLoginRequest) returns (CompletePasskeyLoginResponse);
+  rpc InitiatePasskeyRegistration(InitiatePasskeyRegistrationRequest) returns (InitiatePasskeyRegistrationResponse);
+  rpc CompletePasskeyRegistration(CompletePasskeyRegistrationRequest) returns (CompletePasskeyRegistrationResponse);
+  rpc ValidateSession(ValidateSessionRequest) returns (ValidateSessionResponse);
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+
+  // Role and Permission Management
+  rpc AssignRole(AssignRoleRequest) returns (AssignRoleResponse);
+  rpc RemoveRole(RemoveRoleRequest) returns (RemoveRoleResponse);
+  rpc GetUserRoles(GetUserRolesRequest) returns (GetUserRolesResponse);
+  rpc GetUserPermissions(GetUserPermissionsRequest) returns (GetUserPermissionsResponse);
+  rpc CreateRole(CreateRoleRequest) returns (CreateRoleResponse);
+  rpc UpdateRole(UpdateRoleRequest) returns (UpdateRoleResponse);
+  rpc DeleteRole(DeleteRoleRequest) returns (DeleteRoleResponse);
+  rpc GetRoles(GetRolesRequest) returns (GetRolesResponse);
+
+  // Club Management
+  rpc CreateClub(CreateClubRequest) returns (CreateClubResponse);
+  rpc GetClub(GetClubRequest) returns (GetClubResponse);
+  rpc UpdateClub(UpdateClubRequest) returns (UpdateClubResponse);
+  rpc GetClubs(GetClubsRequest) returns (GetClubsResponse);
+
+  // Audit and Monitoring
+  rpc GetAuditLogs(GetAuditLogsRequest) returns (GetAuditLogsResponse);
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// User Management Messages
+
+message RegisterUserRequest {
+  string email = 1;
+  string username = 2;
+  string first_name = 3;
+  string last_name = 4;
+  string club_slug = 5;
+}
+
+message RegisterUserResponse {
+  User user = 1;
+  string token = 2;
+  string refresh_token = 3;
+  google.protobuf.Timestamp expires_at = 4;
+  bool success = 5;
+  string message = 6;
+}
+
+message GetUserRequest {
+  uint32 club_id = 1;
+  uint32 user_id = 2;
+}
+
+message GetUserResponse {
+  User user = 1;
+  repeated string role_names = 2;
+  repeated string permissions = 3;
+}
+
+message UpdateUserRequest {
+  uint32 club_id = 1;
+  uint32 user_id = 2;
+  string first_name = 3;
+  string last_name = 4;
+  string email = 5;
+  UserStatus status = 6;
+}
+
+message UpdateUserResponse {
+  User user = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message SuspendUserRequest {
+  uint32 club_id = 1;
+  uint32 user_id = 2;
+  string reason = 3;
+  google.protobuf.Timestamp suspended_until = 4;
+}
+
+message SuspendUserResponse {
+  User user = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message ActivateUserRequest {
+  uint32 club_id = 1;
+  uint32 user_id = 2;
+}
+
+message ActivateUserResponse {
+  User user = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message DeleteUserRequest {
+  uint32 club_id = 1;
+  uint32 user_id = 2;
+  bool hard_delete = 3;
+}
+
+message DeleteUserResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Authentication Messages
+
+message InitiatePasskeyLoginRequest {
+  string email = 1;
+  string club_slug = 2;
+}
+
+message InitiatePasskeyLoginResponse {
+  google.protobuf.Struct options = 1;
+  string user_id = 2;
+  bool success = 3;
+  string message = 4;
+}
+
+message CompletePasskeyLoginRequest {
+  string club_slug = 1;
+  string user_id = 2;
+  google.protobuf.Struct credential_result = 3;
+  string ip_address = 4;
+  string user_agent = 5;
+}
+
+message CompletePasskeyLoginResponse {
+  User user = 1;
+  string token = 2;
+  string refresh_token = 3;
+  google.protobuf.Timestamp expires_at = 4;
+  bool success = 5;
+  string message = 6;
+}
+
+message InitiatePasskeyRegistrationRequest {
+  uint32 club_id = 1;
+  uint32 user_id = 2;
+}
+
+message InitiatePasskeyRegistrationResponse {
+  google.protobuf.Struct options = 1;
+  string user_id = 2;
+  bool success = 3;
+  string message = 4;
+}
+
+message CompletePasskeyRegistrationRequest {
+  uint32 club_id = 1;
+  uint32 user_id = 2;
+  google.protobuf.Struct credential_result = 3;
+}
+
+message CompletePasskeyRegistrationResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ValidateSessionRequest {
+  string session_token = 1;
+  uint32 club_id = 2;
+}
+
+message ValidateSessionResponse {
+  User user = 1;
+  bool valid = 2;
+  google.protobuf.Timestamp expires_at = 3;
+  string message = 4;
+}
+
+message LogoutRequest {
+  uint32 club_id = 1;
+  uint32 user_id = 2;
+  string session_token = 3;
+}
+
+message LogoutResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Role and Permission Messages
+
+message AssignRoleRequest {
+  uint32 club_id = 1;
+  uint32 user_id = 2;
+  uint32 role_id = 3;
+  uint32 granted_by = 4;
+  google.protobuf.Timestamp expires_at = 5;
+}
+
+message AssignRoleResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message RemoveRoleRequest {
+  uint32 club_id = 1;
+  uint32 user_id = 2;
+  uint32 role_id = 3;
+}
+
+message RemoveRoleResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message GetUserRolesRequest {
+  uint32 club_id = 1;
+  uint32 user_id = 2;
+}
+
+message GetUserRolesResponse {
+  repeated Role roles = 1;
+}
+
+message GetUserPermissionsRequest {
+  uint32 club_id = 1;
+  uint32 user_id = 2;
+}
+
+message GetUserPermissionsResponse {
+  repeated Permission permissions = 1;
+}
+
+message CreateRoleRequest {
+  uint32 club_id = 1;
+  string name = 2;
+  string description = 3;
+  repeated uint32 permission_ids = 4;
+}
+
+message CreateRoleResponse {
+  Role role = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message UpdateRoleRequest {
+  uint32 club_id = 1;
+  uint32 role_id = 2;
+  string name = 3;
+  string description = 4;
+  repeated uint32 permission_ids = 5;
+}
+
+message UpdateRoleResponse {
+  Role role = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message DeleteRoleRequest {
+  uint32 club_id = 1;
+  uint32 role_id = 2;
+}
+
+message DeleteRoleResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message GetRolesRequest {
+  uint32 club_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message GetRolesResponse {
+  repeated Role roles = 1;
+  int32 total = 2;
+}
+
+// Club Management Messages
+
+message CreateClubRequest {
+  string name = 1;
+  string slug = 2;
+  string description = 3;
+  string location = 4;
+  string website = 5;
+  string contact_email = 6;
+  string contact_phone = 7;
+  string address = 8;
+  ClubSettings settings = 9;
+}
+
+message CreateClubResponse {
+  Club club = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message GetClubRequest {
+  oneof identifier {
+    uint32 club_id = 1;
+    string club_slug = 2;
+  }
+}
+
+message GetClubResponse {
+  Club club = 1;
+}
+
+message UpdateClubRequest {
+  uint32 club_id = 1;
+  string name = 2;
+  string description = 3;
+  string location = 4;
+  string website = 5;
+  string contact_email = 6;
+  string contact_phone = 7;
+  string address = 8;
+  ClubSettings settings = 9;
+  ClubStatus status = 10;
+}
+
+message UpdateClubResponse {
+  Club club = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message GetClubsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+  ClubStatus status = 3;
+}
+
+message GetClubsResponse {
+  repeated Club clubs = 1;
+  int32 total = 2;
+}
+
+// Audit and Monitoring Messages
+
+message GetAuditLogsRequest {
+  uint32 club_id = 1;
+  uint32 user_id = 2;
+  AuditAction action = 3;
+  google.protobuf.Timestamp start_time = 4;
+  google.protobuf.Timestamp end_time = 5;
+  int32 limit = 6;
+  int32 offset = 7;
+}
+
+message GetAuditLogsResponse {
+  repeated AuditLog audit_logs = 1;
+  int32 total = 2;
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  bool healthy = 1;
+  string message = 2;
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+// Data Models
+
+message User {
+  uint32 id = 1;
+  uint32 club_id = 2;
+  string hanko_user_id = 3;
+  string email = 4;
+  string username = 5;
+  string first_name = 6;
+  string last_name = 7;
+  UserStatus status = 8;
+  bool email_verified = 9;
+  google.protobuf.Timestamp last_login_at = 10;
+  int32 failed_attempts = 11;
+  google.protobuf.Timestamp locked_until = 12;
+  google.protobuf.Timestamp created_at = 13;
+  google.protobuf.Timestamp updated_at = 14;
+}
+
+message Role {
+  uint32 id = 1;
+  uint32 club_id = 2;
+  string name = 3;
+  string description = 4;
+  bool is_system = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+message Permission {
+  uint32 id = 1;
+  uint32 club_id = 2;
+  string name = 3;
+  string description = 4;
+  string resource = 5;
+  string action = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+message Club {
+  uint32 id = 1;
+  uint32 club_id = 2;
+  string name = 3;
+  string slug = 4;
+  string description = 5;
+  string location = 6;
+  string website = 7;
+  string logo_url = 8;
+  ClubStatus status = 9;
+  ClubSettings settings = 10;
+  string contact_email = 11;
+  string contact_phone = 12;
+  string address = 13;
+  string hanko_tenant_id = 14;
+  google.protobuf.Timestamp created_at = 15;
+  google.protobuf.Timestamp updated_at = 16;
+}
+
+message ClubSettings {
+  bool allow_reciprocal = 1;
+  bool require_approval = 2;
+  int32 max_visits_per_month = 3;
+  double reciprocal_fee = 4;
+  bool enable_passkey_auth = 5;
+  bool require_passkey_auth = 6;
+  int32 session_timeout_minutes = 7;
+  int32 max_failed_attempts = 8;
+  int32 lockout_duration_minutes = 9;
+  bool enable_audit_logging = 10;
+}
+
+message UserSession {
+  uint32 id = 1;
+  uint32 club_id = 2;
+  uint32 user_id = 3;
+  string hanko_session_id = 4;
+  string jwt_token = 5;
+  string refresh_token = 6;
+  string ip_address = 7;
+  string user_agent = 8;
+  google.protobuf.Timestamp expires_at = 9;
+  google.protobuf.Timestamp last_activity_at = 10;
+  bool is_active = 11;
+  google.protobuf.Timestamp logout_at = 12;
+  google.protobuf.Timestamp created_at = 13;
+  google.protobuf.Timestamp updated_at = 14;
+}
+
+message AuditLog {
+  uint32 id = 1;
+  uint32 club_id = 2;
+  uint32 user_id = 3;
+  string hanko_user_id = 4;
+  AuditAction action = 5;
+  string resource = 6;
+  string details = 7;
+  string ip_address = 8;
+  string user_agent = 9;
+  bool success = 10;
+  string error_message = 11;
+  google.protobuf.Struct metadata = 12;
+  google.protobuf.Timestamp created_at = 13;
+}
+
+// Enums
+
+enum UserStatus {
+  USER_STATUS_UNSPECIFIED = 0;
+  USER_STATUS_ACTIVE = 1;
+  USER_STATUS_INACTIVE = 2;
+  USER_STATUS_SUSPENDED = 3;
+  USER_STATUS_PENDING_VERIFICATION = 4;
+  USER_STATUS_LOCKED = 5;
+}
+
+enum ClubStatus {
+  CLUB_STATUS_UNSPECIFIED = 0;
+  CLUB_STATUS_ACTIVE = 1;
+  CLUB_STATUS_INACTIVE = 2;
+  CLUB_STATUS_SUSPENDED = 3;
+}
+
+enum AuditAction {
+  AUDIT_ACTION_UNSPECIFIED = 0;
+  AUDIT_ACTION_LOGIN = 1;
+  AUDIT_ACTION_LOGOUT = 2;
+  AUDIT_ACTION_REGISTER = 3;
+  AUDIT_ACTION_PASSWORD_RESET = 4;
+  AUDIT_ACTION_EMAIL_VERIFICATION = 5;
+  AUDIT_ACTION_PASSKEY_REGISTRATION = 6;
+  AUDIT_ACTION_PASSKEY_AUTHENTICATION = 7;
+  AUDIT_ACTION_ROLE_ASSIGNED = 8;
+  AUDIT_ACTION_ROLE_REMOVED = 9;
+  AUDIT_ACTION_USER_SUSPENDED = 10;
+  AUDIT_ACTION_USER_ACTIVATED = 11;
+  AUDIT_ACTION_ACCOUNT_LOCKED = 12;
+  AUDIT_ACTION_ACCOUNT_UNLOCKED = 13;
+  AUDIT_ACTION_PERMISSION_GRANTED = 14;
+  AUDIT_ACTION_PERMISSION_REVOKED = 15;
+}
