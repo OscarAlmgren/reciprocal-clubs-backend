@@ -493,6 +493,401 @@ func (r *AuthRepository) GetAuditLogs(ctx context.Context, clubID uint, offset, 
 	return logs, total, nil
 }
 
+// Additional Role operations
+
+// GetRoleByID retrieves a role by ID
+func (r *AuthRepository) GetRoleByID(ctx context.Context, clubID, roleID uint) (*models.Role, error) {
+	var role models.Role
+	if err := r.db.WithTenant(clubID).WithContext(ctx).
+		Preload("RolePermissions.Permission").
+		First(&role, roleID).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, errors.NotFound("Role not found", map[string]interface{}{
+				"role_id": roleID,
+				"club_id": clubID,
+			})
+		}
+		return nil, errors.Internal("Failed to get role", map[string]interface{}{
+			"role_id": roleID,
+			"club_id": clubID,
+		}, err)
+	}
+
+	return &role, nil
+}
+
+// UpdateRole updates a role
+func (r *AuthRepository) UpdateRole(ctx context.Context, role *models.Role) error {
+	if err := r.db.WithTenant(role.ClubID).WithContext(ctx).Save(role).Error; err != nil {
+		return errors.Internal("Failed to update role", map[string]interface{}{
+			"role_id": role.ID,
+			"club_id": role.ClubID,
+		}, err)
+	}
+
+	return nil
+}
+
+// DeleteRole deletes a role (soft delete)
+func (r *AuthRepository) DeleteRole(ctx context.Context, clubID, roleID uint) error {
+	if err := r.db.WithTenant(clubID).WithContext(ctx).Delete(&models.Role{}, roleID).Error; err != nil {
+		return errors.Internal("Failed to delete role", map[string]interface{}{
+			"role_id": roleID,
+			"club_id": clubID,
+		}, err)
+	}
+
+	return nil
+}
+
+// GetRolesWithPagination lists roles with pagination
+func (r *AuthRepository) GetRolesWithPagination(ctx context.Context, clubID uint, offset, limit int) ([]*models.Role, int64, error) {
+	var roles []*models.Role
+	var total int64
+
+	query := r.db.WithTenant(clubID).WithContext(ctx).Model(&models.Role{})
+
+	// Get total count
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, errors.Internal("Failed to count roles", map[string]interface{}{
+			"club_id": clubID,
+		}, err)
+	}
+
+	// Get roles with pagination
+	if err := query.
+		Preload("RolePermissions.Permission").
+		Offset(offset).
+		Limit(limit).
+		Find(&roles).Error; err != nil {
+		return nil, 0, errors.Internal("Failed to list roles", map[string]interface{}{
+			"club_id": clubID,
+		}, err)
+	}
+
+	return roles, total, nil
+}
+
+// Permission operations
+
+// CreatePermission creates a new permission
+func (r *AuthRepository) CreatePermission(ctx context.Context, permission *models.Permission) error {
+	if err := r.db.WithTenant(permission.ClubID).WithContext(ctx).Create(permission).Error; err != nil {
+		return errors.Internal("Failed to create permission", map[string]interface{}{
+			"name":     permission.Name,
+			"club_id":  permission.ClubID,
+			"resource": permission.Resource,
+			"action":   permission.Action,
+		}, err)
+	}
+
+	return nil
+}
+
+// GetPermissionByID retrieves a permission by ID
+func (r *AuthRepository) GetPermissionByID(ctx context.Context, clubID, permissionID uint) (*models.Permission, error) {
+	var permission models.Permission
+	if err := r.db.WithTenant(clubID).WithContext(ctx).First(&permission, permissionID).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, errors.NotFound("Permission not found", map[string]interface{}{
+				"permission_id": permissionID,
+				"club_id":       clubID,
+			})
+		}
+		return nil, errors.Internal("Failed to get permission", map[string]interface{}{
+			"permission_id": permissionID,
+			"club_id":       clubID,
+		}, err)
+	}
+
+	return &permission, nil
+}
+
+// ListPermissions lists all permissions for a club
+func (r *AuthRepository) ListPermissions(ctx context.Context, clubID uint) ([]*models.Permission, error) {
+	var permissions []*models.Permission
+	if err := r.db.WithTenant(clubID).WithContext(ctx).Find(&permissions).Error; err != nil {
+		return nil, errors.Internal("Failed to list permissions", map[string]interface{}{
+			"club_id": clubID,
+		}, err)
+	}
+
+	return permissions, nil
+}
+
+// RolePermission operations
+
+// AssignPermissionToRole assigns a permission to a role
+func (r *AuthRepository) AssignPermissionToRole(ctx context.Context, rolePermission *models.RolePermission) error {
+	// Check if permission is already assigned to role
+	var existing models.RolePermission
+	err := r.db.WithTenant(rolePermission.ClubID).WithContext(ctx).
+		Where("role_id = ? AND permission_id = ?", rolePermission.RoleID, rolePermission.PermissionID).
+		First(&existing).Error
+
+	if err == nil {
+		return errors.Conflict("Permission already assigned to role", map[string]interface{}{
+			"role_id":       rolePermission.RoleID,
+			"permission_id": rolePermission.PermissionID,
+		})
+	}
+
+	if err != gorm.ErrRecordNotFound {
+		return errors.Internal("Failed to check existing permission assignment", nil, err)
+	}
+
+	// Create new permission assignment
+	if err := r.db.WithTenant(rolePermission.ClubID).WithContext(ctx).Create(rolePermission).Error; err != nil {
+		return errors.Internal("Failed to assign permission to role", map[string]interface{}{
+			"role_id":       rolePermission.RoleID,
+			"permission_id": rolePermission.PermissionID,
+		}, err)
+	}
+
+	return nil
+}
+
+// RemovePermissionFromRole removes a permission from a role
+func (r *AuthRepository) RemovePermissionFromRole(ctx context.Context, clubID, roleID, permissionID uint) error {
+	if err := r.db.WithTenant(clubID).WithContext(ctx).
+		Where("role_id = ? AND permission_id = ?", roleID, permissionID).
+		Delete(&models.RolePermission{}).Error; err != nil {
+		return errors.Internal("Failed to remove permission from role", map[string]interface{}{
+			"role_id":       roleID,
+			"permission_id": permissionID,
+		}, err)
+	}
+
+	return nil
+}
+
+// Additional Club operations
+
+// ListClubs lists clubs with pagination
+func (r *AuthRepository) ListClubs(ctx context.Context, offset, limit int) ([]*models.Club, int64, error) {
+	var clubs []*models.Club
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&models.Club{})
+
+	// Get total count
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, errors.Internal("Failed to count clubs", nil, err)
+	}
+
+	// Get clubs with pagination
+	if err := query.
+		Offset(offset).
+		Limit(limit).
+		Find(&clubs).Error; err != nil {
+		return nil, 0, errors.Internal("Failed to list clubs", nil, err)
+	}
+
+	return clubs, total, nil
+}
+
+// GetClubsByStatus lists clubs by status with pagination
+func (r *AuthRepository) GetClubsByStatus(ctx context.Context, status models.ClubStatus, offset, limit int) ([]*models.Club, int64, error) {
+	var clubs []*models.Club
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&models.Club{}).Where("status = ?", status)
+
+	// Get total count
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, errors.Internal("Failed to count clubs by status", map[string]interface{}{
+			"status": string(status),
+		}, err)
+	}
+
+	// Get clubs with pagination
+	if err := query.
+		Offset(offset).
+		Limit(limit).
+		Find(&clubs).Error; err != nil {
+		return nil, 0, errors.Internal("Failed to list clubs by status", map[string]interface{}{
+			"status": string(status),
+		}, err)
+	}
+
+	return clubs, total, nil
+}
+
+// Advanced Audit Log operations
+
+// GetAuditLogsByUser retrieves audit logs for a specific user
+func (r *AuthRepository) GetAuditLogsByUser(ctx context.Context, clubID, userID uint, offset, limit int) ([]*models.AuditLog, int64, error) {
+	var logs []*models.AuditLog
+	var total int64
+
+	query := r.db.WithTenant(clubID).WithContext(ctx).Model(&models.AuditLog{}).Where("user_id = ?", userID)
+
+	// Get total count
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, errors.Internal("Failed to count user audit logs", map[string]interface{}{
+			"user_id": userID,
+		}, err)
+	}
+
+	// Get logs with pagination
+	if err := query.
+		Preload("User").
+		Order("created_at DESC").
+		Offset(offset).
+		Limit(limit).
+		Find(&logs).Error; err != nil {
+		return nil, 0, errors.Internal("Failed to get user audit logs", map[string]interface{}{
+			"user_id": userID,
+		}, err)
+	}
+
+	return logs, total, nil
+}
+
+// GetAuditLogsByAction retrieves audit logs by action type
+func (r *AuthRepository) GetAuditLogsByAction(ctx context.Context, clubID uint, action models.AuditAction, offset, limit int) ([]*models.AuditLog, int64, error) {
+	var logs []*models.AuditLog
+	var total int64
+
+	query := r.db.WithTenant(clubID).WithContext(ctx).Model(&models.AuditLog{}).Where("action = ?", action)
+
+	// Get total count
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, errors.Internal("Failed to count audit logs by action", map[string]interface{}{
+			"action": string(action),
+		}, err)
+	}
+
+	// Get logs with pagination
+	if err := query.
+		Preload("User").
+		Order("created_at DESC").
+		Offset(offset).
+		Limit(limit).
+		Find(&logs).Error; err != nil {
+		return nil, 0, errors.Internal("Failed to get audit logs by action", map[string]interface{}{
+			"action": string(action),
+		}, err)
+	}
+
+	return logs, total, nil
+}
+
+// GetAuditLogsByTimeRange retrieves audit logs within a time range
+func (r *AuthRepository) GetAuditLogsByTimeRange(ctx context.Context, clubID uint, startTime, endTime time.Time, offset, limit int) ([]*models.AuditLog, int64, error) {
+	var logs []*models.AuditLog
+	var total int64
+
+	query := r.db.WithTenant(clubID).WithContext(ctx).Model(&models.AuditLog{}).
+		Where("created_at BETWEEN ? AND ?", startTime, endTime)
+
+	// Get total count
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, errors.Internal("Failed to count audit logs by time range", map[string]interface{}{
+			"start_time": startTime,
+			"end_time":   endTime,
+		}, err)
+	}
+
+	// Get logs with pagination
+	if err := query.
+		Preload("User").
+		Order("created_at DESC").
+		Offset(offset).
+		Limit(limit).
+		Find(&logs).Error; err != nil {
+		return nil, 0, errors.Internal("Failed to get audit logs by time range", map[string]interface{}{
+			"start_time": startTime,
+			"end_time":   endTime,
+		}, err)
+	}
+
+	return logs, total, nil
+}
+
+// User search and filtering
+
+// SearchUsers searches users by various criteria
+func (r *AuthRepository) SearchUsers(ctx context.Context, clubID uint, searchTerm string, status models.UserStatus, offset, limit int) ([]*models.User, int64, error) {
+	var users []*models.User
+	var total int64
+
+	query := r.db.WithTenant(clubID).WithContext(ctx).Model(&models.User{})
+
+	// Add search conditions
+	if searchTerm != "" {
+		searchPattern := "%" + searchTerm + "%"
+		query = query.Where("email ILIKE ? OR username ILIKE ? OR first_name ILIKE ? OR last_name ILIKE ?",
+			searchPattern, searchPattern, searchPattern, searchPattern)
+	}
+
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+
+	// Get total count
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, errors.Internal("Failed to count search results", map[string]interface{}{
+			"search_term": searchTerm,
+			"status":      string(status),
+		}, err)
+	}
+
+	// Get users with pagination
+	if err := query.
+		Preload("Roles.Role").
+		Offset(offset).
+		Limit(limit).
+		Find(&users).Error; err != nil {
+		return nil, 0, errors.Internal("Failed to search users", map[string]interface{}{
+			"search_term": searchTerm,
+			"status":      string(status),
+		}, err)
+	}
+
+	return users, total, nil
+}
+
+// GetUsersByStatus retrieves users by status
+func (r *AuthRepository) GetUsersByStatus(ctx context.Context, clubID uint, status models.UserStatus, offset, limit int) ([]*models.User, int64, error) {
+	var users []*models.User
+	var total int64
+
+	query := r.db.WithTenant(clubID).WithContext(ctx).Model(&models.User{}).Where("status = ?", status)
+
+	// Get total count
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, errors.Internal("Failed to count users by status", map[string]interface{}{
+			"status": string(status),
+		}, err)
+	}
+
+	// Get users with pagination
+	if err := query.
+		Preload("Roles.Role").
+		Offset(offset).
+		Limit(limit).
+		Find(&users).Error; err != nil {
+		return nil, 0, errors.Internal("Failed to get users by status", map[string]interface{}{
+			"status": string(status),
+		}, err)
+	}
+
+	return users, total, nil
+}
+
+// Health Check operations
+
+// HealthCheck performs a health check on the database
+func (r *AuthRepository) HealthCheck(ctx context.Context) error {
+	// Simple ping to check database connectivity
+	if err := r.db.WithContext(ctx).Exec("SELECT 1").Error; err != nil {
+		return errors.Internal("Database health check failed", nil, err)
+	}
+
+	return nil
+}
+
 // Transaction support
 
 // WithTransaction executes a function within a database transaction
