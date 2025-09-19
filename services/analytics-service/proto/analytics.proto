@@ -1,0 +1,565 @@
+syntax = "proto3";
+
+package analytics;
+
+option go_package = "reciprocal-clubs-backend/services/analytics-service/proto";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+// AnalyticsService defines the gRPC service interface for analytics operations
+service AnalyticsService {
+    // Health check
+    rpc Health(google.protobuf.Empty) returns (HealthResponse);
+
+    // Core analytics operations
+    rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse);
+    rpc GetReports(GetReportsRequest) returns (GetReportsResponse);
+    rpc RecordEvent(RecordEventRequest) returns (RecordEventResponse);
+    rpc RecordMetric(RecordMetricRequest) returns (RecordMetricResponse);
+
+    // Real-time analytics
+    rpc GetRealtimeMetrics(GetRealtimeMetricsRequest) returns (GetRealtimeMetricsResponse);
+    rpc StreamEvents(StreamEventsRequest) returns (stream EventStreamResponse);
+    rpc GetLiveStats(GetLiveStatsRequest) returns (GetLiveStatsResponse);
+
+    // Report generation
+    rpc GenerateReport(GenerateReportRequest) returns (GenerateReportResponse);
+    rpc GetReportStatus(GetReportStatusRequest) returns (GetReportStatusResponse);
+    rpc ScheduleReport(ScheduleReportRequest) returns (ScheduleReportResponse);
+
+    // Event management
+    rpc GetEvents(GetEventsRequest) returns (GetEventsResponse);
+    rpc QueryEvents(QueryEventsRequest) returns (QueryEventsResponse);
+    rpc BulkRecordEvents(BulkRecordEventsRequest) returns (BulkRecordEventsResponse);
+
+    // Dashboard operations
+    rpc CreateDashboard(CreateDashboardRequest) returns (CreateDashboardResponse);
+    rpc GetDashboard(GetDashboardRequest) returns (GetDashboardResponse);
+    rpc UpdateDashboard(UpdateDashboardRequest) returns (UpdateDashboardResponse);
+    rpc DeleteDashboard(DeleteDashboardRequest) returns (google.protobuf.Empty);
+    rpc ListDashboards(ListDashboardsRequest) returns (ListDashboardsResponse);
+
+    // Data export and integration
+    rpc ExportData(ExportDataRequest) returns (ExportDataResponse);
+    rpc SendMetricsToExternal(SendMetricsToExternalRequest) returns (SendMetricsToExternalResponse);
+    rpc GetExportStatus(GetExportStatusRequest) returns (GetExportStatusResponse);
+
+    // System operations
+    rpc CleanupOldData(CleanupOldDataRequest) returns (CleanupOldDataResponse);
+    rpc GetSystemHealth(google.protobuf.Empty) returns (SystemHealthResponse);
+    rpc GetServiceMetrics(google.protobuf.Empty) returns (ServiceMetricsResponse);
+
+    // Advanced analytics
+    rpc GetTrendAnalysis(GetTrendAnalysisRequest) returns (GetTrendAnalysisResponse);
+    rpc GetCorrelationAnalysis(GetCorrelationAnalysisRequest) returns (GetCorrelationAnalysisResponse);
+    rpc GetPredictiveAnalytics(GetPredictiveAnalyticsRequest) returns (GetPredictiveAnalyticsResponse);
+    rpc GetAnomalyDetection(GetAnomalyDetectionRequest) returns (GetAnomalyDetectionResponse);
+}
+
+// Enums
+enum MetricType {
+    METRIC_TYPE_UNSPECIFIED = 0;
+    METRIC_TYPE_COUNTER = 1;
+    METRIC_TYPE_GAUGE = 2;
+    METRIC_TYPE_HISTOGRAM = 3;
+    METRIC_TYPE_SUMMARY = 4;
+}
+
+enum ReportType {
+    REPORT_TYPE_UNSPECIFIED = 0;
+    REPORT_TYPE_USAGE = 1;
+    REPORT_TYPE_ENGAGEMENT = 2;
+    REPORT_TYPE_PERFORMANCE = 3;
+    REPORT_TYPE_FINANCIAL = 4;
+    REPORT_TYPE_CUSTOM = 5;
+}
+
+enum ExportFormat {
+    EXPORT_FORMAT_UNSPECIFIED = 0;
+    EXPORT_FORMAT_JSON = 1;
+    EXPORT_FORMAT_CSV = 2;
+    EXPORT_FORMAT_EXCEL = 3;
+    EXPORT_FORMAT_PDF = 4;
+}
+
+enum TimeGranularity {
+    TIME_GRANULARITY_UNSPECIFIED = 0;
+    TIME_GRANULARITY_MINUTE = 1;
+    TIME_GRANULARITY_HOUR = 2;
+    TIME_GRANULARITY_DAY = 3;
+    TIME_GRANULARITY_WEEK = 4;
+    TIME_GRANULARITY_MONTH = 5;
+    TIME_GRANULARITY_YEAR = 6;
+}
+
+// Core data structures
+message AnalyticsEvent {
+    uint32 id = 1;
+    string club_id = 2;
+    string event_type = 3;
+    map<string, string> data = 4;
+    google.protobuf.Timestamp timestamp = 5;
+    string user_id = 6;
+    string session_id = 7;
+    map<string, string> metadata = 8;
+    google.protobuf.Timestamp created_at = 9;
+}
+
+message AnalyticsMetric {
+    uint32 id = 1;
+    string club_id = 2;
+    string metric_name = 3;
+    double metric_value = 4;
+    MetricType metric_type = 5;
+    map<string, string> tags = 6;
+    google.protobuf.Timestamp timestamp = 7;
+    google.protobuf.Timestamp created_at = 8;
+}
+
+message AnalyticsReport {
+    uint32 id = 1;
+    string club_id = 2;
+    ReportType report_type = 3;
+    string title = 4;
+    map<string, string> data = 5;
+    google.protobuf.Timestamp generated_at = 6;
+    google.protobuf.Timestamp created_at = 7;
+    string status = 8;
+    string created_by = 9;
+}
+
+message Dashboard {
+    uint32 id = 1;
+    string club_id = 2;
+    string name = 3;
+    string description = 4;
+    repeated DashboardPanel panels = 5;
+    bool is_public = 6;
+    string created_by = 7;
+    google.protobuf.Timestamp created_at = 8;
+    google.protobuf.Timestamp updated_at = 9;
+}
+
+message DashboardPanel {
+    string id = 1;
+    string title = 2;
+    string type = 3;
+    string query = 4;
+    map<string, string> options = 5;
+    int32 x = 6;
+    int32 y = 7;
+    int32 width = 8;
+    int32 height = 9;
+}
+
+message TimeRange {
+    google.protobuf.Timestamp start = 1;
+    google.protobuf.Timestamp end = 2;
+}
+
+message QueryFilter {
+    string field = 1;
+    string operator = 2;
+    string value = 3;
+}
+
+// Request/Response messages
+
+// Health check
+message HealthResponse {
+    string status = 1;
+    string service = 2;
+    map<string, string> dependencies = 3;
+}
+
+// Core analytics operations
+message GetMetricsRequest {
+    string club_id = 1;
+    string time_range = 2;
+    repeated string metric_names = 3;
+    TimeGranularity granularity = 4;
+    repeated QueryFilter filters = 5;
+}
+
+message GetMetricsResponse {
+    map<string, string> summary = 1;
+    repeated AnalyticsMetric details = 2;
+    string club_id = 3;
+    string time_range = 4;
+    google.protobuf.Timestamp generated_at = 5;
+}
+
+message GetReportsRequest {
+    string club_id = 1;
+    ReportType report_type = 2;
+    uint32 limit = 3;
+    uint32 offset = 4;
+}
+
+message GetReportsResponse {
+    repeated AnalyticsReport reports = 1;
+    uint32 total = 2;
+}
+
+message RecordEventRequest {
+    string club_id = 1;
+    string event_type = 2;
+    map<string, string> data = 3;
+    string user_id = 4;
+    string session_id = 5;
+    map<string, string> metadata = 6;
+    google.protobuf.Timestamp timestamp = 7;
+}
+
+message RecordEventResponse {
+    bool success = 1;
+    string message = 2;
+    uint32 event_id = 3;
+}
+
+message RecordMetricRequest {
+    string club_id = 1;
+    string metric_name = 2;
+    double metric_value = 3;
+    MetricType metric_type = 4;
+    map<string, string> tags = 5;
+    google.protobuf.Timestamp timestamp = 6;
+}
+
+message RecordMetricResponse {
+    bool success = 1;
+    string message = 2;
+    uint32 metric_id = 3;
+}
+
+// Real-time analytics
+message GetRealtimeMetricsRequest {
+    string club_id = 1;
+    repeated string metric_names = 2;
+}
+
+message GetRealtimeMetricsResponse {
+    map<string, double> metrics = 1;
+    google.protobuf.Timestamp timestamp = 2;
+}
+
+message StreamEventsRequest {
+    string club_id = 1;
+    repeated string event_types = 2;
+    repeated QueryFilter filters = 3;
+}
+
+message EventStreamResponse {
+    AnalyticsEvent event = 1;
+    google.protobuf.Timestamp received_at = 2;
+}
+
+message GetLiveStatsRequest {
+    string club_id = 1;
+}
+
+message GetLiveStatsResponse {
+    map<string, double> stats = 1;
+    google.protobuf.Timestamp timestamp = 2;
+}
+
+// Report generation
+message GenerateReportRequest {
+    string club_id = 1;
+    ReportType report_type = 2;
+    TimeRange time_range = 3;
+    map<string, string> parameters = 4;
+    bool async = 5;
+}
+
+message GenerateReportResponse {
+    bool success = 1;
+    string message = 2;
+    AnalyticsReport report = 3;
+    string job_id = 4;
+}
+
+message GetReportStatusRequest {
+    string job_id = 1;
+}
+
+message GetReportStatusResponse {
+    string status = 1;
+    string message = 2;
+    int32 progress = 3;
+    AnalyticsReport report = 4;
+}
+
+message ScheduleReportRequest {
+    string club_id = 1;
+    ReportType report_type = 2;
+    string schedule = 3;
+    map<string, string> parameters = 4;
+    string email = 5;
+}
+
+message ScheduleReportResponse {
+    bool success = 1;
+    string message = 2;
+    string schedule_id = 3;
+}
+
+// Event management
+message GetEventsRequest {
+    string club_id = 1;
+    string time_range = 2;
+    repeated string event_types = 3;
+    uint32 limit = 4;
+    uint32 offset = 5;
+}
+
+message GetEventsResponse {
+    repeated AnalyticsEvent events = 1;
+    uint32 total = 2;
+}
+
+message QueryEventsRequest {
+    string club_id = 1;
+    repeated QueryFilter filters = 2;
+    TimeRange time_range = 3;
+    uint32 limit = 4;
+    uint32 offset = 5;
+    string sort_by = 6;
+    bool sort_desc = 7;
+}
+
+message QueryEventsResponse {
+    repeated AnalyticsEvent events = 1;
+    uint32 total = 2;
+    map<string, string> aggregations = 3;
+}
+
+message BulkRecordEventsRequest {
+    repeated RecordEventRequest events = 1;
+}
+
+message BulkRecordEventsResponse {
+    bool success = 1;
+    string message = 2;
+    int32 processed_count = 3;
+    int32 error_count = 4;
+    repeated string errors = 5;
+}
+
+// Dashboard operations
+message CreateDashboardRequest {
+    string club_id = 1;
+    string name = 2;
+    string description = 3;
+    repeated DashboardPanel panels = 4;
+    bool is_public = 5;
+    string created_by = 6;
+}
+
+message CreateDashboardResponse {
+    bool success = 1;
+    string message = 2;
+    Dashboard dashboard = 3;
+}
+
+message GetDashboardRequest {
+    uint32 dashboard_id = 1;
+    string club_id = 2;
+}
+
+message GetDashboardResponse {
+    Dashboard dashboard = 1;
+}
+
+message UpdateDashboardRequest {
+    uint32 dashboard_id = 1;
+    string name = 2;
+    string description = 3;
+    repeated DashboardPanel panels = 4;
+    bool is_public = 5;
+}
+
+message UpdateDashboardResponse {
+    bool success = 1;
+    string message = 2;
+    Dashboard dashboard = 3;
+}
+
+message DeleteDashboardRequest {
+    uint32 dashboard_id = 1;
+    string club_id = 2;
+}
+
+message ListDashboardsRequest {
+    string club_id = 1;
+    uint32 limit = 2;
+    uint32 offset = 3;
+    bool include_public = 4;
+}
+
+message ListDashboardsResponse {
+    repeated Dashboard dashboards = 1;
+    uint32 total = 2;
+}
+
+// Data export and integration
+message ExportDataRequest {
+    string club_id = 1;
+    string export_type = 2;
+    ExportFormat format = 3;
+    TimeRange time_range = 4;
+    repeated QueryFilter filters = 5;
+    map<string, string> options = 6;
+}
+
+message ExportDataResponse {
+    bool success = 1;
+    string message = 2;
+    string export_id = 3;
+    string download_url = 4;
+}
+
+message SendMetricsToExternalRequest {
+    map<string, string> metrics = 1;
+    string destination = 2;
+    map<string, string> options = 3;
+}
+
+message SendMetricsToExternalResponse {
+    bool success = 1;
+    string message = 2;
+}
+
+message GetExportStatusRequest {
+    string export_id = 1;
+}
+
+message GetExportStatusResponse {
+    string status = 1;
+    string message = 2;
+    int32 progress = 3;
+    string download_url = 4;
+}
+
+// System operations
+message CleanupOldDataRequest {
+    int32 days = 1;
+    repeated string data_types = 2;
+}
+
+message CleanupOldDataResponse {
+    bool success = 1;
+    string message = 2;
+    int32 deleted_count = 3;
+}
+
+message SystemHealthResponse {
+    string status = 1;
+    map<string, string> components = 2;
+    google.protobuf.Timestamp timestamp = 3;
+    map<string, double> metrics = 4;
+}
+
+message ServiceMetricsResponse {
+    map<string, double> counters = 1;
+    map<string, double> gauges = 2;
+    map<string, double> histograms = 3;
+    google.protobuf.Timestamp timestamp = 4;
+}
+
+// Advanced analytics
+message GetTrendAnalysisRequest {
+    string club_id = 1;
+    string metric_name = 2;
+    TimeRange time_range = 3;
+    TimeGranularity granularity = 4;
+}
+
+message GetTrendAnalysisResponse {
+    repeated TrendDataPoint data_points = 1;
+    TrendSummary summary = 2;
+}
+
+message TrendDataPoint {
+    google.protobuf.Timestamp timestamp = 1;
+    double value = 2;
+    double trend = 3;
+}
+
+message TrendSummary {
+    string direction = 1;
+    double slope = 2;
+    double confidence = 3;
+    string interpretation = 4;
+}
+
+message GetCorrelationAnalysisRequest {
+    string club_id = 1;
+    repeated string metric_names = 2;
+    TimeRange time_range = 3;
+}
+
+message GetCorrelationAnalysisResponse {
+    map<string, double> correlations = 1;
+    repeated CorrelationPair significant_pairs = 2;
+}
+
+message CorrelationPair {
+    string metric1 = 1;
+    string metric2 = 2;
+    double correlation = 3;
+    double significance = 4;
+}
+
+message GetPredictiveAnalyticsRequest {
+    string club_id = 1;
+    string metric_name = 2;
+    TimeRange historical_range = 3;
+    int32 forecast_days = 4;
+}
+
+message GetPredictiveAnalyticsResponse {
+    repeated PredictionDataPoint predictions = 1;
+    PredictionSummary summary = 2;
+}
+
+message PredictionDataPoint {
+    google.protobuf.Timestamp timestamp = 1;
+    double predicted_value = 2;
+    double confidence_upper = 3;
+    double confidence_lower = 4;
+}
+
+message PredictionSummary {
+    string model_type = 1;
+    double accuracy = 2;
+    string confidence_level = 3;
+}
+
+message GetAnomalyDetectionRequest {
+    string club_id = 1;
+    string metric_name = 2;
+    TimeRange time_range = 3;
+    double sensitivity = 4;
+}
+
+message GetAnomalyDetectionResponse {
+    repeated AnomalyDataPoint anomalies = 1;
+    AnomalySummary summary = 2;
+}
+
+message AnomalyDataPoint {
+    google.protobuf.Timestamp timestamp = 1;
+    double value = 2;
+    double expected_value = 3;
+    double anomaly_score = 4;
+    string severity = 5;
+}
+
+message AnomalySummary {
+    int32 total_anomalies = 1;
+    int32 high_severity = 2;
+    int32 medium_severity = 3;
+    int32 low_severity = 4;
+}
