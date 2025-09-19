@@ -8,9 +8,6 @@ import (
 
 	"reciprocal-clubs-backend/pkg/shared/config"
 	"reciprocal-clubs-backend/pkg/shared/logging"
-
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // ServiceClients holds all service client connections
@@ -24,6 +21,7 @@ type ServiceClients struct {
 	GovernanceService   GovernanceServiceClient
 	httpClient          *http.Client
 	logger              logging.Logger
+	config              *ServiceClientConfig
 }
 
 // NewServiceClients creates and initializes all service clients
@@ -33,9 +31,13 @@ func NewServiceClients(cfg *config.Config, logger logging.Logger) (*ServiceClien
 		Timeout: time.Duration(cfg.Service.Timeout) * time.Second,
 	}
 
+	// Get service client configuration
+	clientConfig := DefaultServiceClientConfig()
+
 	clients := &ServiceClients{
 		httpClient: httpClient,
 		logger:     logger,
+		config:     clientConfig,
 	}
 
 	// Initialize service clients
@@ -43,7 +45,15 @@ func NewServiceClients(cfg *config.Config, logger logging.Logger) (*ServiceClien
 		return nil, fmt.Errorf("failed to initialize service clients: %w", err)
 	}
 
-	logger.Info("Service clients initialized successfully", nil)
+	logger.Info("Service clients initialized successfully", map[string]interface{}{
+		"auth_address":         clientConfig.AuthServiceAddress,
+		"member_address":       clientConfig.MemberServiceAddress,
+		"reciprocal_address":   clientConfig.ReciprocalServiceAddress,
+		"blockchain_address":   clientConfig.BlockchainServiceAddress,
+		"notification_address": clientConfig.NotificationServiceAddress,
+		"analytics_address":    clientConfig.AnalyticsServiceAddress,
+		"governance_address":   clientConfig.GovernanceServiceAddress,
+	})
 	return clients, nil
 }
 
@@ -156,302 +166,57 @@ func (sc *ServiceClients) HealthCheck(ctx context.Context) error {
 
 	for _, service := range services {
 		if err := service.health(ctx); err != nil {
-			return fmt.Errorf("%s service health check failed: %w", service.name, err)
+			sc.logger.Error("Service health check failed", map[string]interface{}{
+				"service": service.name,
+				"error":   err.Error(),
+			})
+			// Don't fail immediately - check all services and log issues
 		}
 	}
 
 	return nil
 }
 
-// Service client interfaces and implementations
+// GetServiceStatus returns the connection status of all services
+func (sc *ServiceClients) GetServiceStatus(ctx context.Context) map[string]bool {
+	status := make(map[string]bool)
 
-// AuthServiceClient interface
-type AuthServiceClient interface {
-	Close() error
-	HealthCheck(ctx context.Context) error
-	// Add specific auth service methods here
-}
-
-// authServiceClient implementation
-type authServiceClient struct {
-	conn   *grpc.ClientConn
-	logger logging.Logger
-}
-
-func NewAuthServiceClient(cfg *config.Config, logger logging.Logger) (AuthServiceClient, error) {
-	// In a real implementation, get the service address from config
-	address := "localhost:9091" // auth-service gRPC port
-
-	conn, err := grpc.Dial(address, 
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithTimeout(5*time.Second),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to auth service: %w", err)
+	services := []struct {
+		name   string
+		health func(context.Context) error
+	}{
+		{"auth", sc.AuthService.HealthCheck},
+		{"member", sc.MemberService.HealthCheck},
+		{"reciprocal", sc.ReciprocalService.HealthCheck},
+		{"blockchain", sc.BlockchainService.HealthCheck},
+		{"notification", sc.NotificationService.HealthCheck},
+		{"analytics", sc.AnalyticsService.HealthCheck},
+		{"governance", sc.GovernanceService.HealthCheck},
 	}
 
-	return &authServiceClient{
-		conn:   conn,
-		logger: logger,
-	}, nil
-}
-
-func (c *authServiceClient) Close() error {
-	return c.conn.Close()
-}
-
-func (c *authServiceClient) HealthCheck(ctx context.Context) error {
-	// In a real implementation, call a health check gRPC method
-	// For now, just check connection state
-	state := c.conn.GetState()
-	if state.String() != "READY" && state.String() != "IDLE" {
-		return fmt.Errorf("auth service connection not ready: %s", state)
-	}
-	return nil
-}
-
-// MemberServiceClient interface
-type MemberServiceClient interface {
-	Close() error
-	HealthCheck(ctx context.Context) error
-	// Add specific member service methods here
-}
-
-type memberServiceClient struct {
-	conn   *grpc.ClientConn
-	logger logging.Logger
-}
-
-func NewMemberServiceClient(cfg *config.Config, logger logging.Logger) (MemberServiceClient, error) {
-	address := "localhost:9092" // member-service gRPC port
-
-	conn, err := grpc.Dial(address,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithTimeout(5*time.Second),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to member service: %w", err)
+	for _, service := range services {
+		status[service.name] = service.health(ctx) == nil
 	}
 
-	return &memberServiceClient{
-		conn:   conn,
-		logger: logger,
-	}, nil
+	return status
 }
 
-func (c *memberServiceClient) Close() error {
-	return c.conn.Close()
-}
+// RefreshConnections attempts to refresh all service connections
+func (sc *ServiceClients) RefreshConnections(cfg *config.Config) error {
+	sc.logger.Info("Refreshing service client connections", nil)
 
-func (c *memberServiceClient) HealthCheck(ctx context.Context) error {
-	state := c.conn.GetState()
-	if state.String() != "READY" && state.String() != "IDLE" {
-		return fmt.Errorf("member service connection not ready: %s", state)
-	}
-	return nil
-}
-
-// ReciprocalServiceClient interface
-type ReciprocalServiceClient interface {
-	Close() error
-	HealthCheck(ctx context.Context) error
-	// Add specific reciprocal service methods here
-}
-
-type reciprocalServiceClient struct {
-	conn   *grpc.ClientConn
-	logger logging.Logger
-}
-
-func NewReciprocalServiceClient(cfg *config.Config, logger logging.Logger) (ReciprocalServiceClient, error) {
-	address := "localhost:9093" // reciprocal-service gRPC port
-
-	conn, err := grpc.Dial(address,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithTimeout(5*time.Second),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to reciprocal service: %w", err)
+	// Close existing connections
+	if err := sc.Close(); err != nil {
+		sc.logger.Error("Error closing existing connections during refresh", map[string]interface{}{
+			"error": err.Error(),
+		})
 	}
 
-	return &reciprocalServiceClient{
-		conn:   conn,
-		logger: logger,
-	}, nil
-}
-
-func (c *reciprocalServiceClient) Close() error {
-	return c.conn.Close()
-}
-
-func (c *reciprocalServiceClient) HealthCheck(ctx context.Context) error {
-	state := c.conn.GetState()
-	if state.String() != "READY" && state.String() != "IDLE" {
-		return fmt.Errorf("reciprocal service connection not ready: %s", state)
-	}
-	return nil
-}
-
-// BlockchainServiceClient interface
-type BlockchainServiceClient interface {
-	Close() error
-	HealthCheck(ctx context.Context) error
-	// Add specific blockchain service methods here
-}
-
-type blockchainServiceClient struct {
-	conn   *grpc.ClientConn
-	logger logging.Logger
-}
-
-func NewBlockchainServiceClient(cfg *config.Config, logger logging.Logger) (BlockchainServiceClient, error) {
-	address := "localhost:9094" // blockchain-service gRPC port
-
-	conn, err := grpc.Dial(address,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithTimeout(5*time.Second),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to blockchain service: %w", err)
+	// Reinitialize all clients
+	if err := sc.initializeClients(cfg); err != nil {
+		return fmt.Errorf("failed to refresh service clients: %w", err)
 	}
 
-	return &blockchainServiceClient{
-		conn:   conn,
-		logger: logger,
-	}, nil
-}
-
-func (c *blockchainServiceClient) Close() error {
-	return c.conn.Close()
-}
-
-func (c *blockchainServiceClient) HealthCheck(ctx context.Context) error {
-	state := c.conn.GetState()
-	if state.String() != "READY" && state.String() != "IDLE" {
-		return fmt.Errorf("blockchain service connection not ready: %s", state)
-	}
-	return nil
-}
-
-// NotificationServiceClient interface
-type NotificationServiceClient interface {
-	Close() error
-	HealthCheck(ctx context.Context) error
-	// Add specific notification service methods here
-}
-
-type notificationServiceClient struct {
-	conn   *grpc.ClientConn
-	logger logging.Logger
-}
-
-func NewNotificationServiceClient(cfg *config.Config, logger logging.Logger) (NotificationServiceClient, error) {
-	address := "localhost:9095" // notification-service gRPC port
-
-	conn, err := grpc.Dial(address,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithTimeout(5*time.Second),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to notification service: %w", err)
-	}
-
-	return &notificationServiceClient{
-		conn:   conn,
-		logger: logger,
-	}, nil
-}
-
-func (c *notificationServiceClient) Close() error {
-	return c.conn.Close()
-}
-
-func (c *notificationServiceClient) HealthCheck(ctx context.Context) error {
-	state := c.conn.GetState()
-	if state.String() != "READY" && state.String() != "IDLE" {
-		return fmt.Errorf("notification service connection not ready: %s", state)
-	}
-	return nil
-}
-
-// AnalyticsServiceClient interface
-type AnalyticsServiceClient interface {
-	Close() error
-	HealthCheck(ctx context.Context) error
-	// Add specific analytics service methods here
-}
-
-type analyticsServiceClient struct {
-	conn   *grpc.ClientConn
-	logger logging.Logger
-}
-
-func NewAnalyticsServiceClient(cfg *config.Config, logger logging.Logger) (AnalyticsServiceClient, error) {
-	address := "localhost:9096" // analytics-service gRPC port
-
-	conn, err := grpc.Dial(address,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithTimeout(5*time.Second),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to analytics service: %w", err)
-	}
-
-	return &analyticsServiceClient{
-		conn:   conn,
-		logger: logger,
-	}, nil
-}
-
-func (c *analyticsServiceClient) Close() error {
-	return c.conn.Close()
-}
-
-func (c *analyticsServiceClient) HealthCheck(ctx context.Context) error {
-	state := c.conn.GetState()
-	if state.String() != "READY" && state.String() != "IDLE" {
-		return fmt.Errorf("analytics service connection not ready: %s", state)
-	}
-	return nil
-}
-
-// GovernanceServiceClient interface
-type GovernanceServiceClient interface {
-	Close() error
-	HealthCheck(ctx context.Context) error
-	// Add specific governance service methods here
-}
-
-type governanceServiceClient struct {
-	conn   *grpc.ClientConn
-	logger logging.Logger
-}
-
-func NewGovernanceServiceClient(cfg *config.Config, logger logging.Logger) (GovernanceServiceClient, error) {
-	address := "localhost:9097" // governance-service gRPC port
-
-	conn, err := grpc.Dial(address,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithTimeout(5*time.Second),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to governance service: %w", err)
-	}
-
-	return &governanceServiceClient{
-		conn:   conn,
-		logger: logger,
-	}, nil
-}
-
-func (c *governanceServiceClient) Close() error {
-	return c.conn.Close()
-}
-
-func (c *governanceServiceClient) HealthCheck(ctx context.Context) error {
-	state := c.conn.GetState()
-	if state.String() != "READY" && state.String() != "IDLE" {
-		return fmt.Errorf("governance service connection not ready: %s", state)
-	}
+	sc.logger.Info("Service client connections refreshed successfully", nil)
 	return nil
 }

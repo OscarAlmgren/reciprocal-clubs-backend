@@ -1,0 +1,431 @@
+syntax = "proto3";
+
+package gateway;
+
+option go_package = "./proto";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+// ===============================
+// API Gateway Service Definition
+// ===============================
+
+service APIGatewayService {
+  // Health and system endpoints
+  rpc HealthCheck(google.protobuf.Empty) returns (HealthCheckResponse);
+  rpc GetServiceStatus(google.protobuf.Empty) returns (ServiceStatusResponse);
+  rpc GetMetrics(google.protobuf.Empty) returns (MetricsResponse);
+
+  // Gateway management
+  rpc GetServiceConnections(google.protobuf.Empty) returns (ServiceConnectionsResponse);
+  rpc RefreshServiceConnections(google.protobuf.Empty) returns (RefreshConnectionsResponse);
+  rpc GetRateLimitStatus(RateLimitStatusRequest) returns (RateLimitStatusResponse);
+  rpc ResetRateLimit(ResetRateLimitRequest) returns (ResetRateLimitResponse);
+
+  // Circuit breaker management
+  rpc GetCircuitBreakerStatus(google.protobuf.Empty) returns (CircuitBreakerStatusResponse);
+  rpc ResetCircuitBreaker(ResetCircuitBreakerRequest) returns (ResetCircuitBreakerResponse);
+
+  // Request analytics
+  rpc GetRequestAnalytics(RequestAnalyticsRequest) returns (RequestAnalyticsResponse);
+  rpc GetGraphQLAnalytics(GraphQLAnalyticsRequest) returns (GraphQLAnalyticsResponse);
+}
+
+// ===============================
+// Health and Status Messages
+// ===============================
+
+message HealthCheckResponse {
+  string status = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  map<string, string> components = 3;
+  string version = 4;
+}
+
+message ServiceStatusResponse {
+  string status = 1;
+  google.protobuf.Timestamp uptime = 2;
+  string version = 3;
+  string environment = 4;
+  ServiceConnections connections = 5;
+  GatewayMetrics metrics = 6;
+}
+
+message ServiceConnections {
+  bool auth_service = 1;
+  bool member_service = 2;
+  bool reciprocal_service = 3;
+  bool blockchain_service = 4;
+  bool notification_service = 5;
+  bool analytics_service = 6;
+  bool governance_service = 7;
+  bool message_bus = 8;
+}
+
+message GatewayMetrics {
+  int64 total_requests = 1;
+  int64 active_connections = 2;
+  int64 graphql_operations = 3;
+  int64 rest_requests = 4;
+  int64 websocket_connections = 5;
+  double average_response_time = 6;
+  int64 error_rate = 7;
+}
+
+// ===============================
+// Metrics Messages
+// ===============================
+
+message MetricsResponse {
+  repeated MetricFamily metric_families = 1;
+  google.protobuf.Timestamp collected_at = 2;
+}
+
+message MetricFamily {
+  string name = 1;
+  string help = 2;
+  MetricType type = 3;
+  repeated Metric metrics = 4;
+}
+
+enum MetricType {
+  COUNTER = 0;
+  GAUGE = 1;
+  HISTOGRAM = 2;
+  SUMMARY = 3;
+}
+
+message Metric {
+  repeated LabelPair labels = 1;
+  double value = 2;
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+message LabelPair {
+  string name = 1;
+  string value = 2;
+}
+
+// ===============================
+// Service Connection Management
+// ===============================
+
+message ServiceConnectionsResponse {
+  repeated ServiceConnection connections = 1;
+  google.protobuf.Timestamp last_check = 2;
+}
+
+message ServiceConnection {
+  string service_name = 1;
+  ConnectionStatus status = 2;
+  string address = 3;
+  google.protobuf.Timestamp last_ping = 4;
+  int32 retry_count = 5;
+  string error_message = 6;
+  ConnectionMetrics metrics = 7;
+}
+
+enum ConnectionStatus {
+  HEALTHY = 0;
+  UNHEALTHY = 1;
+  CONNECTING = 2;
+  DISCONNECTED = 3;
+  CIRCUIT_OPEN = 4;
+}
+
+message ConnectionMetrics {
+  int64 total_requests = 1;
+  int64 successful_requests = 2;
+  int64 failed_requests = 3;
+  double average_latency = 4;
+  google.protobuf.Timestamp last_success = 5;
+  google.protobuf.Timestamp last_failure = 6;
+}
+
+message RefreshConnectionsResponse {
+  bool success = 1;
+  string message = 2;
+  repeated string refreshed_services = 3;
+  repeated string failed_services = 4;
+}
+
+// ===============================
+// Rate Limiting Messages
+// ===============================
+
+message RateLimitStatusRequest {
+  string identifier = 1; // IP, user ID, or "global"
+  RateLimitType type = 2;
+}
+
+enum RateLimitType {
+  GLOBAL = 0;
+  PER_IP = 1;
+  PER_USER = 2;
+  PER_ENDPOINT = 3;
+  GRAPHQL_COMPLEXITY = 4;
+}
+
+message RateLimitStatusResponse {
+  RateLimitInfo rate_limit = 1;
+  bool currently_limited = 2;
+  google.protobuf.Timestamp reset_time = 3;
+}
+
+message RateLimitInfo {
+  string identifier = 1;
+  RateLimitType type = 2;
+  int32 limit = 3;
+  int32 remaining = 4;
+  int32 window_seconds = 5;
+  google.protobuf.Timestamp window_start = 6;
+  int32 requests_in_window = 7;
+}
+
+message ResetRateLimitRequest {
+  string identifier = 1;
+  RateLimitType type = 2;
+}
+
+message ResetRateLimitResponse {
+  bool success = 1;
+  string message = 2;
+  RateLimitInfo new_status = 3;
+}
+
+// ===============================
+// Circuit Breaker Messages
+// ===============================
+
+message CircuitBreakerStatusResponse {
+  repeated CircuitBreakerInfo circuit_breakers = 1;
+  google.protobuf.Timestamp timestamp = 2;
+}
+
+message CircuitBreakerInfo {
+  string name = 1;
+  CircuitBreakerState state = 2;
+  int32 failure_count = 3;
+  int32 success_count = 4;
+  google.protobuf.Timestamp last_failure = 5;
+  google.protobuf.Timestamp last_success = 6;
+  google.protobuf.Timestamp next_attempt = 7;
+  CircuitBreakerConfig config = 8;
+  CircuitBreakerMetrics metrics = 9;
+}
+
+enum CircuitBreakerState {
+  CLOSED = 0;
+  OPEN = 1;
+  HALF_OPEN = 2;
+}
+
+message CircuitBreakerConfig {
+  int32 failure_threshold = 1;
+  int32 success_threshold = 2;
+  int32 timeout_seconds = 3;
+  int32 max_requests = 4;
+}
+
+message CircuitBreakerMetrics {
+  int64 total_requests = 1;
+  int64 successful_requests = 2;
+  int64 failed_requests = 3;
+  int64 rejected_requests = 4;
+  double success_rate = 5;
+  double average_response_time = 6;
+}
+
+message ResetCircuitBreakerRequest {
+  string name = 1;
+}
+
+message ResetCircuitBreakerResponse {
+  bool success = 1;
+  string message = 2;
+  CircuitBreakerInfo circuit_breaker = 3;
+}
+
+// ===============================
+// Request Analytics Messages
+// ===============================
+
+message RequestAnalyticsRequest {
+  google.protobuf.Timestamp start_time = 1;
+  google.protobuf.Timestamp end_time = 2;
+  string club_id = 3;
+  repeated string endpoints = 4;
+  int32 limit = 5;
+}
+
+message RequestAnalyticsResponse {
+  RequestAnalytics analytics = 1;
+  google.protobuf.Timestamp generated_at = 2;
+}
+
+message RequestAnalytics {
+  TimeRange time_range = 1;
+  RequestStats total_stats = 2;
+  repeated EndpointStats endpoint_stats = 3;
+  repeated StatusCodeStats status_code_stats = 4;
+  repeated TimeSeriesPoint request_timeline = 5;
+  repeated UserAgentStats user_agent_stats = 6;
+  repeated CountryStats country_stats = 7;
+}
+
+message TimeRange {
+  google.protobuf.Timestamp start = 1;
+  google.protobuf.Timestamp end = 2;
+  int32 duration_seconds = 3;
+}
+
+message RequestStats {
+  int64 total_requests = 1;
+  int64 successful_requests = 2;
+  int64 failed_requests = 3;
+  double success_rate = 4;
+  double average_response_time = 5;
+  double p95_response_time = 6;
+  double p99_response_time = 7;
+  int64 unique_users = 8;
+  int64 unique_ips = 9;
+}
+
+message EndpointStats {
+  string endpoint = 1;
+  string method = 2;
+  int64 request_count = 3;
+  double average_response_time = 4;
+  double success_rate = 5;
+  int64 error_count = 6;
+  repeated StatusCodeCount status_codes = 7;
+}
+
+message StatusCodeStats {
+  int32 status_code = 1;
+  int64 count = 2;
+  double percentage = 3;
+}
+
+message StatusCodeCount {
+  int32 status_code = 1;
+  int64 count = 2;
+}
+
+message TimeSeriesPoint {
+  google.protobuf.Timestamp timestamp = 1;
+  int64 request_count = 2;
+  double average_response_time = 3;
+  int64 error_count = 4;
+}
+
+message UserAgentStats {
+  string user_agent = 1;
+  int64 request_count = 2;
+  double percentage = 3;
+}
+
+message CountryStats {
+  string country_code = 1;
+  string country_name = 2;
+  int64 request_count = 3;
+  double percentage = 4;
+}
+
+// ===============================
+// GraphQL Analytics Messages
+// ===============================
+
+message GraphQLAnalyticsRequest {
+  google.protobuf.Timestamp start_time = 1;
+  google.protobuf.Timestamp end_time = 2;
+  string club_id = 3;
+  repeated string operations = 4;
+  int32 limit = 5;
+}
+
+message GraphQLAnalyticsResponse {
+  GraphQLAnalytics analytics = 1;
+  google.protobuf.Timestamp generated_at = 2;
+}
+
+message GraphQLAnalytics {
+  TimeRange time_range = 1;
+  GraphQLStats total_stats = 2;
+  repeated OperationStats operation_stats = 3;
+  repeated FieldStats field_stats = 4;
+  repeated ErrorStats error_stats = 5;
+  repeated ComplexityStats complexity_stats = 6;
+  repeated SubscriptionStats subscription_stats = 7;
+}
+
+message GraphQLStats {
+  int64 total_operations = 1;
+  int64 queries = 2;
+  int64 mutations = 3;
+  int64 subscriptions = 4;
+  int64 successful_operations = 5;
+  int64 failed_operations = 6;
+  double success_rate = 7;
+  double average_execution_time = 8;
+  double average_complexity = 9;
+  int64 active_subscriptions = 10;
+}
+
+message OperationStats {
+  string operation_name = 1;
+  OperationType operation_type = 2;
+  int64 execution_count = 3;
+  double average_execution_time = 4;
+  double success_rate = 5;
+  int64 error_count = 6;
+  double average_complexity = 7;
+  double p95_execution_time = 8;
+}
+
+enum OperationType {
+  QUERY = 0;
+  MUTATION = 1;
+  SUBSCRIPTION = 2;
+}
+
+message FieldStats {
+  string field_name = 1;
+  string parent_type = 2;
+  int64 resolution_count = 3;
+  double average_resolution_time = 4;
+  int64 error_count = 5;
+  double cache_hit_rate = 6;
+}
+
+message ErrorStats {
+  string error_code = 1;
+  string error_message = 2;
+  int64 occurrence_count = 3;
+  double percentage = 4;
+  repeated string affected_operations = 5;
+}
+
+message ComplexityStats {
+  int32 min_complexity = 1;
+  int32 max_complexity = 2;
+  double average_complexity = 3;
+  repeated ComplexityBucket complexity_distribution = 4;
+}
+
+message ComplexityBucket {
+  int32 min_complexity = 1;
+  int32 max_complexity = 2;
+  int64 operation_count = 3;
+}
+
+message SubscriptionStats {
+  string subscription_name = 1;
+  int64 active_count = 2;
+  int64 total_created = 3;
+  int64 total_completed = 4;
+  double average_duration = 5;
+  int64 events_sent = 6;
+  double average_events_per_subscription = 7;
+}
