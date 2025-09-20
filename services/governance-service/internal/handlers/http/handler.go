@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -10,18 +11,35 @@ import (
 
 	"reciprocal-clubs-backend/pkg/shared/logging"
 	"reciprocal-clubs-backend/pkg/shared/monitoring"
+	"reciprocal-clubs-backend/services/governance-service/internal/models"
 	"reciprocal-clubs-backend/services/governance-service/internal/service"
 )
 
+// GovernanceServiceInterface defines the interface for governance service operations
+type GovernanceServiceInterface interface {
+	CreateProposal(ctx context.Context, req *service.CreateProposalRequest) (*models.Proposal, error)
+	GetProposal(ctx context.Context, id uint) (*models.Proposal, error)
+	GetProposalsByClub(ctx context.Context, clubID uint) ([]models.Proposal, error)
+	GetActiveProposals(ctx context.Context, clubID uint) ([]models.Proposal, error)
+	ActivateProposal(ctx context.Context, proposalID, activatorID uint) (*models.Proposal, error)
+	FinalizeProposal(ctx context.Context, proposalID uint) (*models.Proposal, error)
+	CastVote(ctx context.Context, req *service.CastVoteRequest) (*models.Vote, error)
+	CreateVotingRights(ctx context.Context, req *service.CreateVotingRightsRequest) (*models.VotingRights, error)
+	GetVotingRights(ctx context.Context, memberID, clubID uint) (*models.VotingRights, error)
+	CreateGovernancePolicy(ctx context.Context, req *service.CreateGovernancePolicyRequest) (*models.GovernancePolicy, error)
+	GetActiveGovernancePolicies(ctx context.Context, clubID uint) ([]models.GovernancePolicy, error)
+	HealthCheck(ctx context.Context) error
+}
+
 // HTTPHandler handles HTTP requests for governance service
 type HTTPHandler struct {
-	service    *service.Service
+	service    GovernanceServiceInterface
 	logger     logging.Logger
-	monitoring *monitoring.Monitor
+	monitoring monitoring.MonitoringInterface
 }
 
 // NewHTTPHandler creates a new HTTP handler
-func NewHTTPHandler(service *service.Service, logger logging.Logger, monitoring *monitoring.Monitor) *HTTPHandler {
+func NewHTTPHandler(service GovernanceServiceInterface, logger logging.Logger, monitoring monitoring.MonitoringInterface) *HTTPHandler {
 	return &HTTPHandler{
 		service:    service,
 		logger:     logger,

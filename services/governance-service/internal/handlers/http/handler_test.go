@@ -12,6 +12,8 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"reciprocal-clubs-backend/pkg/shared/logging"
+	"reciprocal-clubs-backend/pkg/shared/monitoring"
 	"reciprocal-clubs-backend/services/governance-service/internal/models"
 	"reciprocal-clubs-backend/services/governance-service/internal/service"
 )
@@ -244,12 +246,32 @@ func (m *mockLogger) Error(msg string, fields map[string]interface{}) {}
 func (m *mockLogger) Debug(msg string, fields map[string]interface{}) {}
 func (m *mockLogger) Warn(msg string, fields map[string]interface{})  {}
 func (m *mockLogger) Fatal(msg string, fields map[string]interface{}) {}
-func (m *mockLogger) With(fields map[string]interface{}) interface{} { return m }
+func (m *mockLogger) With(fields map[string]interface{}) logging.Logger { return m }
+func (m *mockLogger) WithContext(ctx context.Context) logging.Logger { return m }
 
 type mockMonitoring struct{}
 
-func (m *mockMonitoring) RecordBusinessEvent(event, value string) {}
-func (m *mockMonitoring) RecordHTTPRequest(method, path string, status int, duration time.Duration) {}
+// MonitoringInterface implementation
+func (m *mockMonitoring) RecordHTTPRequest(method, endpoint string, statusCode int, duration time.Duration) {}
+func (m *mockMonitoring) RecordGRPCRequest(method, status string, duration time.Duration) {}
+func (m *mockMonitoring) RecordBusinessEvent(eventType, clubID string) {}
+func (m *mockMonitoring) RecordDatabaseConnections(count int) {}
+func (m *mockMonitoring) RecordActiveConnections(count int) {}
+func (m *mockMonitoring) RecordMessageReceived(subject string) {}
+func (m *mockMonitoring) RecordMessagePublished(subject string) {}
+func (m *mockMonitoring) RegisterHealthCheck(checker monitoring.HealthChecker) {}
+func (m *mockMonitoring) GetSystemHealth(ctx context.Context) *monitoring.SystemHealth {
+	return &monitoring.SystemHealth{Status: "healthy", Service: "governance-service"}
+}
+func (m *mockMonitoring) UpdateServiceUptime() {}
+func (m *mockMonitoring) GetMetricsHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("# Mock metrics"))
+	})
+}
+
+// Legacy methods for backward compatibility
 func (m *mockMonitoring) StartMetricsServer() {}
 
 func setupTestHandler(mockSvc *mockService) *HTTPHandler {
