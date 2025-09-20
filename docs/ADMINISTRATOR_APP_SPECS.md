@@ -25,31 +25,54 @@ The Reciprocal Clubs Administrator App is a Flutter-based application designed f
 ### 1. Authentication and Security
 
 #### Multi-Factor Authentication
-```dart
-// API Endpoint
-POST /api/auth/admin/login
-{
-  "email": "admin@clubname.com",
-  "password": "secure_password",
-  "mfa_code": "123456",
-  "device_info": {
-    "type": "web",
-    "browser": "Chrome",
-    "ip_address": "192.168.1.100"
+```graphql
+# GraphQL Mutation
+mutation AdminLogin($input: LoginInput!) {
+  login(input: $input) {
+    token
+    refreshToken
+    expiresAt
+    user {
+      id
+      email
+      username
+      firstName
+      lastName
+      clubId
+      roles
+      permissions
+      status
+    }
   }
 }
 
-// Response
+# Variables
 {
-  "access_token": "jwt_access_token",
-  "refresh_token": "jwt_refresh_token",
-  "expires_in": 3600,
-  "user": {
-    "id": "admin_001",
-    "name": "John Administrator",
-    "role": "club_admin",
-    "club_id": "club_001",
-    "permissions": ["member_read", "member_write", "visit_manage", "reports_view"]
+  "input": {
+    "email": "admin@clubname.com",
+    "password": "secure_password"
+  }
+}
+
+# Response
+{
+  "data": {
+    "login": {
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "refreshToken": "refresh_token_here",
+      "expiresAt": "2024-01-16T10:30:00Z",
+      "user": {
+        "id": "admin_001",
+        "email": "admin@clubname.com",
+        "username": "john.admin",
+        "firstName": "John",
+        "lastName": "Administrator",
+        "clubId": "club_001",
+        "roles": ["club_admin"],
+        "permissions": ["member_read", "member_write", "visit_manage", "reports_view"],
+        "status": "ACTIVE"
+      }
+    }
   }
 }
 ```
@@ -62,138 +85,246 @@ POST /api/auth/admin/login
 ### 2. Member Management Module
 
 #### Member Search and Lookup
-```dart
-// API Endpoint
-GET /api/admin/members/search?q={query}&club_id={club_id}&status={status}&limit=20&offset=0
+```graphql
+# GraphQL Query
+query GetMembers($pagination: PaginationInput, $status: MemberStatus) {
+  members(pagination: $pagination, status: $status) {
+    nodes {
+      id
+      memberNumber
+      membershipType
+      status
+      profile {
+        firstName
+        lastName
+        phoneNumber
+        address {
+          city
+          state
+          country
+        }
+      }
+      clubId
+      joinedAt
+      blockchainIdentity
+    }
+    pageInfo {
+      page
+      pageSize
+      total
+      totalPages
+      hasNextPage
+      hasPrevPage
+    }
+  }
+}
 
-// Response
+# Variables
 {
-  "members": [
-    {
-      "id": "member_001",
-      "name": "Jane Smith",
-      "email": "jane@email.com",
-      "phone": "+1234567890",
-      "home_club": {
-        "id": "club_002",
-        "name": "Ocean View Club",
-        "city": "Miami"
-      },
-      "membership_status": "active",
-      "membership_tier": "gold",
-      "visit_privileges": ["dining", "fitness", "pool"],
-      "current_visit": {
-        "id": "visit_001",
-        "check_in_time": "2024-01-15T10:30:00Z",
-        "status": "active"
+  "pagination": {
+    "page": 1,
+    "pageSize": 20
+  },
+  "status": "ACTIVE"
+}
+
+# Member by Number Query
+query GetMemberByNumber($memberNumber: String!) {
+  memberByNumber(memberNumber: $memberNumber) {
+    id
+    memberNumber
+    membershipType
+    status
+    profile {
+      firstName
+      lastName
+      phoneNumber
+      address {
+        street
+        city
+        state
+        country
       }
     }
-  ],
-  "total": 1,
-  "has_more": false
+    blockchainIdentity
+    joinedAt
+  }
 }
 ```
 
 #### Member Profile Management
-```dart
-// API Endpoint
-PUT /api/admin/members/{member_id}
+```graphql
+# GraphQL Mutation
+mutation UpdateMember($id: ID!, $input: MemberProfileInput!) {
+  updateMember(id: $id, input: $input) {
+    id
+    memberNumber
+    membershipType
+    status
+    profile {
+      firstName
+      lastName
+      phoneNumber
+      address {
+        street
+        city
+        state
+        postalCode
+        country
+      }
+      emergencyContact {
+        name
+        relationship
+        phoneNumber
+      }
+      preferences {
+        emailNotifications
+        smsNotifications
+        pushNotifications
+        marketingEmails
+      }
+    }
+    blockchainIdentity
+    updatedAt
+  }
+}
+
+# Variables
 {
-  "personal_info": {
-    "name": "Jane Smith",
-    "email": "jane.smith@email.com",
-    "phone": "+1234567890",
+  "id": "member_001",
+  "input": {
+    "firstName": "Jane",
+    "lastName": "Smith",
+    "phoneNumber": "+1234567890",
     "address": {
       "street": "123 Main St",
       "city": "New York",
+      "state": "NY",
+      "postalCode": "10001",
       "country": "USA"
+    },
+    "preferences": {
+      "emailNotifications": true,
+      "smsNotifications": false,
+      "pushNotifications": true,
+      "marketingEmails": false
     }
-  },
-  "membership_info": {
-    "status": "active",
-    "tier": "platinum",
-    "join_date": "2023-01-15",
-    "expiry_date": "2024-12-31"
-  },
-  "privileges": ["dining", "fitness", "pool", "spa", "golf"],
-  "notes": "VIP member, prefers quiet areas"
-}
-
-// Response
-{
-  "success": true,
-  "member": {
-    // Updated member object
-  },
-  "audit_id": "audit_001",
-  "blockchain_hash": "0x1234567890abcdef"
+  }
 }
 ```
 
 ### 3. Visit Management Module
 
 #### Member Check-In Process
-```dart
-// API Endpoint
-POST /api/admin/visits/checkin
-{
-  "member_id": "member_001",
-  "club_id": "club_001",
-  "visit_type": "reciprocal",
-  "services": ["dining", "pool"],
-  "planned_duration": 240, // minutes
-  "staff_notes": "Guest requested poolside service"
+```graphql
+# GraphQL Mutation
+mutation RecordVisit($input: RecordVisitInput!) {
+  recordVisit(input: $input) {
+    id
+    memberId
+    clubId
+    visitingClubId
+    status
+    checkInTime
+    services
+    cost
+    verified
+    blockchainTxId
+    createdAt
+  }
 }
 
-// Response
+# Variables
 {
-  "visit": {
-    "id": "visit_001",
-    "member": {
-      "id": "member_001",
-      "name": "Jane Smith",
-      "home_club": "Ocean View Club"
-    },
-    "check_in_time": "2024-01-15T10:30:00Z",
-    "access_code": "ABC123",
-    "qr_code": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
-    "privileges": ["dining", "pool"],
-    "restrictions": ["no_guest_privileges"],
-    "estimated_checkout": "2024-01-15T14:30:00Z"
+  "input": {
+    "memberId": "member_001",
+    "visitingClubId": "club_001",
+    "services": ["dining", "pool"],
+    "cost": 25.00
+  }
+}
+
+# Response includes member details via nested query
+query GetVisitWithDetails($visitId: ID!) {
+  visit(id: $visitId) {
+    id
+    status
+    checkInTime
+    services
+    cost
+    verified
+    blockchainTxId
+    # Member details fetched via relation
+    member {
+      id
+      memberNumber
+      profile {
+        firstName
+        lastName
+      }
+      clubId
+    }
   }
 }
 ```
 
 #### Visit History and Analytics
-```dart
-// API Endpoint
-GET /api/admin/visits/history?club_id={club_id}&from={date}&to={date}&limit=50
-
-// Response
-{
-  "visits": [
-    {
-      "id": "visit_001",
-      "member": {
-        "name": "Jane Smith",
-        "home_club": "Ocean View Club"
-      },
-      "check_in_time": "2024-01-15T10:30:00Z",
-      "check_out_time": "2024-01-15T14:15:00Z",
-      "duration_minutes": 225,
-      "services_used": ["dining", "pool"],
-      "satisfaction_rating": 5,
-      "spending": 85.50
+```graphql
+# GraphQL Query for Visit History
+query GetVisits($pagination: PaginationInput, $status: VisitStatus) {
+  visits(pagination: $pagination, status: $status) {
+    nodes {
+      id
+      memberId
+      visitingClubId
+      status
+      checkInTime
+      checkOutTime
+      services
+      cost
+      verified
+      blockchainTxId
+      # Nested member and club data
+      member {
+        profile {
+          firstName
+          lastName
+        }
+        clubId
+      }
     }
-  ],
-  "analytics": {
-    "total_visits": 1250,
-    "average_duration": 180,
-    "revenue_generated": 125000.00,
-    "top_home_clubs": [
-      {"name": "Ocean View Club", "visits": 45},
-      {"name": "Mountain Resort", "visits": 32}
-    ]
+    pageInfo {
+      total
+      hasNextPage
+      page
+    }
+  }
+}
+
+# GraphQL Query for Analytics
+query GetAnalytics($startDate: Time, $endDate: Time) {
+  analytics(startDate: $startDate, endDate: $endDate) {
+    visits {
+      totalVisits
+      monthlyVisits {
+        month
+        count
+      }
+      topDestinations {
+        club {
+          id
+          name
+          location
+        }
+        count
+      }
+      averageVisitDuration
+    }
+    members {
+      totalMembers
+      activeMembers
+      newMembersThisMonth
+    }
   }
 }
 ```

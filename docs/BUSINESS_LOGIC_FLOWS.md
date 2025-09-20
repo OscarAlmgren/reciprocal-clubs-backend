@@ -29,25 +29,24 @@ This document details the business logic sequence flows for different user journ
 ```
 1. Staff opens Administrator App
 2. Staff searches for visiting member
-   └─ Call: GET /api/members/search?query={member_info}
+   └─ GraphQL Query: memberByNumber or members search
    └─ Returns: Member profile with home club and status
 
 3. System validates reciprocal agreement
-   └─ Call: GET /api/agreements/validate?homeClub={id}&visitingClub={id}
+   └─ GraphQL Query: reciprocalAgreements with status filter
    └─ Returns: Agreement status and visiting privileges
 
 4. Staff creates visit record
-   └─ Call: POST /api/visits
-   └─ Body: { memberId, clubId, visitType, plannedDuration }
+   └─ GraphQL Mutation: recordVisit
+   └─ Input: { memberId, visitingClubId, services, cost }
    └─ Returns: Visit ID and access permissions
 
-5. System logs blockchain record (if required)
-   └─ Call: POST /api/blockchain/visits
-   └─ Body: { visitId, memberId, clubId, timestamp, hash }
-   └─ Returns: Blockchain transaction ID
+5. System logs blockchain record (automatically via resolver)
+   └─ Blockchain service called internally by visit resolver
+   └─ Returns: Blockchain transaction ID in visit response
 
 6. Staff provides access credentials/badge
-   └─ Display: QR code or temporary access code
+   └─ Display: QR code or temporary access code from visit data
 ```
 
 ### 2. Membership Update Flow (Backoffice Operation)
@@ -57,32 +56,31 @@ This document details the business logic sequence flows for different user journ
 
 ```
 1. Administrator searches for member
-   └─ Call: GET /api/members/search?clubId={id}&query={search}
-   └─ Returns: Paginated member list
+   └─ GraphQL Query: members with pagination and filters
+   └─ Returns: Paginated member list with connection info
 
 2. Administrator selects member for update
-   └─ Call: GET /api/members/{id}
+   └─ GraphQL Query: member(id) with full profile
    └─ Returns: Complete member profile with history
 
 3. Administrator updates member information
-   └─ Call: PUT /api/members/{id}
-   └─ Body: { personalInfo, membershipStatus, privileges, notes }
+   └─ GraphQL Mutation: updateMember
+   └─ Input: { id, input: MemberProfileInput }
    └─ Returns: Updated member profile
 
-4. System validates business rules
+4. System validates business rules (in resolver)
    └─ Internal: Membership tier validation
    └─ Internal: Privilege consistency check
    └─ Internal: Agreement compliance verification
 
-5. System creates audit trail
-   └─ Call: POST /api/audit/member-updates
-   └─ Body: { memberId, changes, adminId, timestamp, reason }
-   └─ Returns: Audit record ID
+5. System creates audit trail (automatically)
+   └─ Audit service called internally by resolver
+   └─ Blockchain service called for immutable record
+   └─ Returns: Updated member with blockchain confirmation
 
-6. System synchronizes with blockchain (if applicable)
-   └─ Call: POST /api/blockchain/member-updates
-   └─ Body: { memberId, changeHash, adminId, timestamp }
-   └─ Returns: Blockchain confirmation
+6. Real-time updates via GraphQL Subscription
+   └─ Subscription: memberUpdated
+   └─ Notifies other connected clients of changes
 ```
 
 ### 3. Agreement Management Flow (Advanced Operation)
@@ -92,38 +90,37 @@ This document details the business logic sequence flows for different user journ
 
 ```
 1. Manager initiates agreement process
-   └─ Call: GET /api/clubs/search?type=reciprocal
+   └─ GraphQL Query: clubs with reciprocal capability filter
    └─ Returns: Available clubs for agreements
 
 2. Manager creates draft agreement
-   └─ Call: POST /api/agreements/draft
-   └─ Body: { clubA, clubB, terms, conditions, privileges }
-   └─ Returns: Draft agreement ID
+   └─ GraphQL Mutation: createReciprocalAgreement
+   └─ Input: CreateReciprocalAgreementInput
+   └─ Returns: Draft agreement with pending status
 
-3. System validates agreement terms
+3. System validates agreement terms (in resolver)
    └─ Internal: Compliance rule validation
    └─ Internal: Privilege conflict detection
    └─ Internal: Financial impact analysis
 
 4. Manager submits for approval
-   └─ Call: POST /api/agreements/{id}/submit
-   └─ Body: { approverNotes, priority }
-   └─ Returns: Approval workflow ID
+   └─ GraphQL Mutation: approveReciprocalAgreement
+   └─ Input: { id: agreementId }
+   └─ Returns: Agreement with approved status
 
-5. System creates blockchain proposal
-   └─ Call: POST /api/blockchain/agreement-proposal
-   └─ Body: { agreementId, terms, participants, hash }
-   └─ Returns: Blockchain proposal ID
+5. System creates blockchain proposal (automatically)
+   └─ Blockchain service called internally by resolver
+   └─ Returns: Blockchain transaction ID in response
 
 6. Counterparty club receives notification
-   └─ Call: POST /api/notifications/agreement-request
-   └─ Body: { targetClub, agreementId, urgency }
-   └─ Returns: Notification ID
+   └─ GraphQL Subscription: notificationReceived
+   └─ Real-time notification delivery
+   └─ GraphQL Mutation: createNotification (internal)
 
 7. Upon approval, system finalizes agreement
-   └─ Call: PUT /api/agreements/{id}/activate
-   └─ Body: { approvals, effectiveDate, signatures }
-   └─ Returns: Active agreement with blockchain confirmation
+   └─ Agreement status automatically updated to ACTIVE
+   └─ Blockchain confirmation included in response
+   └─ Real-time updates via agreementUpdated subscription
 ```
 
 ### 4. Financial Transaction Processing

@@ -29,8 +29,8 @@ lib/
 │   │   ├── exceptions.dart         # Custom exceptions
 │   │   └── error_handler.dart      # Global error handling
 │   ├── network/
-│   │   ├── api_client.dart         # Dio HTTP client
-│   │   ├── interceptors.dart       # Auth & logging interceptors
+│   │   ├── graphql_client.dart     # GraphQL client configuration
+│   │   ├── graphql_links.dart      # Auth, HTTP, WebSocket links
 │   │   └── network_info.dart       # Connectivity checking
 │   ├── storage/
 │   │   ├── local_storage.dart      # Hive/Drift configuration

@@ -27,28 +27,48 @@ The Reciprocal Clubs End User App is a Flutter-based mobile and web application 
 ### 1. Authentication and Onboarding
 
 #### Passwordless Authentication Flow
-```dart
-// API Endpoint
-POST /api/auth/member/initiate
-{
-  "email": "member@email.com",
-  "device_info": {
-    "platform": "ios",
-    "device_id": "unique_device_identifier",
-    "push_token": "fcm_token_for_notifications",
-    "biometric_available": true
+```graphql
+# GraphQL Mutation for Login
+mutation MemberLogin($input: LoginInput!) {
+  login(input: $input) {
+    token
+    refreshToken
+    expiresAt
+    user {
+      id
+      email
+      username
+      firstName
+      lastName
+      clubId
+      status
+      roles
+      permissions
+      createdAt
+    }
   }
 }
 
-// Response
+# Variables
 {
-  "challenge_id": "challenge_001",
-  "methods": ["webauthn", "email_link", "sms"],
-  "webauthn_options": {
-    "challenge": "base64_challenge",
-    "rp": {"id": "reciprocal-clubs.com", "name": "Reciprocal Clubs"},
-    "user": {"id": "user_001", "name": "Jane Smith", "displayName": "Jane"},
-    "pubKeyCredParams": [{"type": "public-key", "alg": -7}]
+  "input": {
+    "email": "member@email.com",
+    "password": "secure_password"
+  }
+}
+
+# Get Current User Query
+query Me {
+  me {
+    id
+    email
+    username
+    firstName
+    lastName
+    clubId
+    status
+    roles
+    permissions
   }
 }
 ```
@@ -105,57 +125,67 @@ PUT /api/member/profile/setup
 ### 2. Club Discovery and Search
 
 #### Location-Based Club Search
-```dart
-// API Endpoint
-GET /api/clubs/search
-  ?lat=40.7128&lng=-74.0060
-  &radius=25
-  &services=dining,fitness,pool
-  &amenities=wifi,parking
-  &sort=distance
-  &limit=20
-
-// Response
-{
-  "clubs": [
-    {
-      "id": "club_001",
-      "name": "Manhattan Athletic Club",
-      "description": "Premier athletic club in the heart of Manhattan",
-      "location": {
-        "address": "456 Park Ave, New York, NY",
-        "coordinates": {"lat": 40.7589, "lng": -73.9786},
-        "distance_miles": 2.3
-      },
-      "images": [
-        "https://cdn.club.com/clubs/club_001/main.jpg",
-        "https://cdn.club.com/clubs/club_001/fitness.jpg"
-      ],
-      "rating": {
-        "average": 4.6,
-        "count": 1250
-      },
-      "amenities": ["fitness", "dining", "pool", "spa", "business_center"],
-      "reciprocal_info": {
-        "access_type": "full",
-        "guest_policy": "member_plus_one",
-        "advance_booking": false,
-        "fees": {
-          "facility_fee": 15.00,
-          "guest_fee": 25.00
-        }
-      },
-      "current_status": {
-        "open": true,
-        "capacity": "moderate",
-        "wait_time_minutes": 0
-      }
+```graphql
+# GraphQL Query for Club Search
+query GetClubs {
+  clubs {
+    id
+    name
+    description
+    location
+    website
+    status
+    settings {
+      allowReciprocal
+      requireApproval
+      maxVisitsPerMonth
+      reciprocalFee
     }
-  ],
-  "filters": {
-    "available_services": ["dining", "fitness", "pool", "spa", "golf"],
-    "price_ranges": ["free", "low", "moderate", "premium"],
-    "club_types": ["athletic", "country", "city", "resort"]
+    createdAt
+    updatedAt
+  }
+}
+
+# For location-based search, use a custom resolver or filter
+# This would be implemented in the resolver to handle geographic queries
+query SearchNearbyClubs($lat: Float!, $lng: Float!, $radius: Float!) {
+  # Custom resolver that filters clubs by location
+  clubs {
+    id
+    name
+    description
+    location
+    settings {
+      allowReciprocal
+      reciprocalFee
+    }
+    # Additional fields calculated in resolver:
+    # - distance from provided coordinates
+    # - current capacity/availability
+    # - reciprocal agreement status with user's club
+  }
+}
+
+# Get specific club details
+query GetClubDetails($id: ID!) {
+  club(id: $id) {
+    id
+    name
+    description
+    location
+    website
+    status
+    settings {
+      allowReciprocal
+      requireApproval
+      maxVisitsPerMonth
+      reciprocalFee
+    }
+    # Related data via resolvers
+    # reciprocalAgreements {
+    #   status
+    #   terms
+    # }
   }
 }
 ```
