@@ -5,6 +5,7 @@ go 1.25
 require (
 	github.com/gorilla/mux v1.8.1
 	github.com/stretchr/testify v1.11.1
+	golang.org/x/time v0.13.0
 	google.golang.org/grpc v1.75.1
 	google.golang.org/protobuf v1.36.9
 	gorm.io/driver/sqlite v1.6.0
