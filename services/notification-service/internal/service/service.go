@@ -23,13 +23,13 @@ type NotificationService struct {
 	providers  *providers.NotificationProviders
 	logger     logging.Logger
 	messaging  messaging.MessageBus
-	monitoring *monitoring.Monitor
+	monitoring monitoring.MonitoringInterface
 	metrics    *notificationmonitoring.NotificationMetrics
 	health     *notificationmonitoring.HealthChecker
 }
 
 // NewService creates a new notification service
-func NewService(repo *repository.Repository, providers *providers.NotificationProviders, logger logging.Logger, messaging messaging.MessageBus, monitoring *monitoring.Monitor) *NotificationService {
+func NewService(repo *repository.Repository, providers *providers.NotificationProviders, logger logging.Logger, messaging messaging.MessageBus, monitoring monitoring.MonitoringInterface) *NotificationService {
 	metrics := notificationmonitoring.NewNotificationMetrics(logger)
 	health := notificationmonitoring.NewHealthChecker(repo.GetDB(), providers, logger)
 

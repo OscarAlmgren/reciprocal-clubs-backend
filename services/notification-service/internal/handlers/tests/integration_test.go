@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"net"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	"net"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
@@ -31,18 +32,20 @@ import (
 	pb "reciprocal-clubs-backend/services/notification-service/proto"
 )
 
+// Mock implementations for testing
+
 // Integration test suite
 type NotificationIntegrationTestSuite struct {
 	suite.Suite
-	db              *gorm.DB
-	service         *service.NotificationService
-	httpHandler     *httpHandlers.HTTPHandler
-	grpcHandler     *grpcHandlers.GRPCHandler
-	grpcServer      *grpc.Server
-	grpcClient      pb.NotificationServiceClient
-	grpcConn        *grpc.ClientConn
-	listener        *bufconn.Listener
-	httpServer      *httptest.Server
+	db          *gorm.DB
+	service     *service.NotificationService
+	httpHandler *httpHandlers.HTTPHandler
+	grpcHandler *grpcHandlers.GRPCHandler
+	grpcServer  *grpc.Server
+	grpcClient  pb.NotificationServiceClient
+	grpcConn    *grpc.ClientConn
+	listener    *bufconn.Listener
+	httpServer  *httptest.Server
 }
 
 func (suite *NotificationIntegrationTestSuite) SetupSuite() {
@@ -64,7 +67,7 @@ func (suite *NotificationIntegrationTestSuite) SetupSuite() {
 	// Initialize dependencies
 	logger := &TestLogger{}
 	repo := repository.NewRepository(db, logger)
-	mockProviders := &MockNotificationProviders{}
+	mockProviders := &providers.NotificationProviders{} // Use actual struct with nil providers for testing
 	mockMessaging := &MockMessageBus{}
 	mockMonitor := &MockMonitor{}
 
@@ -302,35 +305,37 @@ func TestNotificationIntegrationTestSuite(t *testing.T) {
 	suite.Run(t, new(NotificationIntegrationTestSuite))
 }
 
-// Mock implementations for testing
-
-type MockNotificationProviders struct{}
-
-func (m *MockNotificationProviders) ValidateConfig() error {
-	return nil
-}
-
-func (m *MockNotificationProviders) TestConnections(ctx context.Context) error {
-	return nil
-}
+// MockNotificationProviders removed - using actual struct with nil providers instead
 
 type TestLogger struct{}
 
-func (l *TestLogger) Debug(msg string, fields map[string]interface{}) {}
-func (l *TestLogger) Info(msg string, fields map[string]interface{})  {}
-func (l *TestLogger) Warn(msg string, fields map[string]interface{})  {}
-func (l *TestLogger) Error(msg string, fields map[string]interface{}) {}
-func (l *TestLogger) Fatal(msg string, fields map[string]interface{}) {}
+func (l *TestLogger) Debug(msg string, fields map[string]interface{})   {}
+func (l *TestLogger) Info(msg string, fields map[string]interface{})    {}
+func (l *TestLogger) Warn(msg string, fields map[string]interface{})    {}
+func (l *TestLogger) Error(msg string, fields map[string]interface{})   {}
+func (l *TestLogger) Fatal(msg string, fields map[string]interface{})   {}
 func (l *TestLogger) With(fields map[string]interface{}) logging.Logger { return l }
-func (l *TestLogger) WithContext(ctx context.Context) logging.Logger { return l }
+func (l *TestLogger) WithContext(ctx context.Context) logging.Logger    { return l }
 
 type MockMessageBus struct{}
 
-func (m *MockMessageBus) Publish(ctx context.Context, subject string, data []byte) error {
+func (m *MockMessageBus) Publish(ctx context.Context, subject string, data interface{}) error {
+	return nil
+}
+
+func (m *MockMessageBus) PublishSync(ctx context.Context, subject string, data interface{}) error {
 	return nil
 }
 
 func (m *MockMessageBus) Subscribe(subject string, handler messaging.MessageHandler) error {
+	return nil
+}
+
+func (m *MockMessageBus) SubscribeQueue(subject, queue string, handler messaging.MessageHandler) error {
+	return nil
+}
+
+func (m *MockMessageBus) Request(ctx context.Context, subject string, data interface{}, response interface{}) error {
 	return nil
 }
 
@@ -344,10 +349,41 @@ func (m *MockMessageBus) HealthCheck(ctx context.Context) error {
 
 type MockMonitor struct{}
 
-func (m *MockMonitor) RecordBusinessEvent(eventType, category string) {}
+// MonitoringInterface implementation
+func (m *MockMonitor) RecordHTTPRequest(method, endpoint string, statusCode int, duration time.Duration) {}
 
-func (m *MockMonitor) RecordHTTPRequest(method, path string, statusCode int, duration time.Duration) {}
+func (m *MockMonitor) RecordGRPCRequest(method, status string, duration time.Duration) {}
 
+func (m *MockMonitor) RecordBusinessEvent(eventType, clubID string) {}
+
+func (m *MockMonitor) RecordDatabaseConnections(count int) {}
+
+func (m *MockMonitor) RecordActiveConnections(count int) {}
+
+func (m *MockMonitor) RecordMessageReceived(subject string) {}
+
+func (m *MockMonitor) RecordMessagePublished(subject string) {}
+
+func (m *MockMonitor) RegisterHealthCheck(checker monitoring.HealthChecker) {}
+
+func (m *MockMonitor) GetSystemHealth(ctx context.Context) *monitoring.SystemHealth {
+	return &monitoring.SystemHealth{
+		Status:  "healthy",
+		Service: "notification-service",
+	}
+}
+
+func (m *MockMonitor) UpdateServiceUptime() {}
+
+func (m *MockMonitor) GetMetricsHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("# Mock metrics\n"))
+	})
+}
+
+// Legacy methods for compatibility
 func (m *MockMonitor) HealthCheckHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -365,5 +401,3 @@ func (m *MockMonitor) ReadinessCheckHandler() func(http.ResponseWriter, *http.Re
 }
 
 func (m *MockMonitor) StartMetricsServer() {}
-
-func (m *MockMonitor) RegisterHealthCheck(checker monitoring.HealthChecker) {}

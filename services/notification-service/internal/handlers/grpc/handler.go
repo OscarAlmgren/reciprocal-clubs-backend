@@ -20,11 +20,11 @@ type GRPCHandler struct {
 	pb.UnimplementedNotificationServiceServer
 	service    *service.NotificationService
 	logger     logging.Logger
-	monitoring *monitoring.Monitor
+	monitoring monitoring.MonitoringInterface
 }
 
 // NewGRPCHandler creates a new gRPC handler
-func NewGRPCHandler(service *service.NotificationService, logger logging.Logger, monitoring *monitoring.Monitor) *GRPCHandler {
+func NewGRPCHandler(service *service.NotificationService, logger logging.Logger, monitoring monitoring.MonitoringInterface) *GRPCHandler {
 	return &GRPCHandler{
 		service:    service,
 		logger:     logger,

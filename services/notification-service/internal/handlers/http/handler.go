@@ -18,11 +18,11 @@ import (
 type HTTPHandler struct {
 	service    *service.NotificationService
 	logger     logging.Logger
-	monitoring *monitoring.Monitor
+	monitoring monitoring.MonitoringInterface
 }
 
 // NewHTTPHandler creates a new HTTP handler
-func NewHTTPHandler(service *service.NotificationService, logger logging.Logger, monitoring *monitoring.Monitor) *HTTPHandler {
+func NewHTTPHandler(service *service.NotificationService, logger logging.Logger, monitoring monitoring.MonitoringInterface) *HTTPHandler {
 	return &HTTPHandler{
 		service:    service,
 		logger:     logger,
