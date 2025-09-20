@@ -6,9 +6,9 @@ import (
 	apperrors "reciprocal-clubs-backend/pkg/shared/errors"
 	"reciprocal-clubs-backend/pkg/shared/logging"
 	"reciprocal-clubs-backend/pkg/shared/monitoring"
-	pb "reciprocal-clubs-backend/services/auth-service/proto"
 	"reciprocal-clubs-backend/services/auth-service/internal/models"
 	"reciprocal-clubs-backend/services/auth-service/internal/service"
+	pb "reciprocal-clubs-backend/services/auth-service/proto"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
