@@ -9,19 +9,40 @@ import (
 	"reciprocal-clubs-backend/pkg/shared/messaging"
 	"reciprocal-clubs-backend/pkg/shared/monitoring"
 	"reciprocal-clubs-backend/services/governance-service/internal/models"
-	"reciprocal-clubs-backend/services/governance-service/internal/repository"
 )
+
+// RepositoryInterface defines the interface for governance repository operations
+type RepositoryInterface interface {
+	CreateProposal(ctx context.Context, proposal *models.Proposal) error
+	GetProposal(ctx context.Context, id uint) (*models.Proposal, error)
+	GetProposalsByClub(ctx context.Context, clubID uint) ([]models.Proposal, error)
+	GetProposalsByStatus(ctx context.Context, clubID uint, status models.ProposalStatus) ([]models.Proposal, error)
+	UpdateProposal(ctx context.Context, proposal *models.Proposal) error
+	CreateVote(ctx context.Context, vote *models.Vote) error
+	GetVoteByMemberAndProposal(ctx context.Context, memberID, proposalID uint) (*models.Vote, error)
+	GetVotesByProposal(ctx context.Context, proposalID uint) ([]models.Vote, error)
+	CreateVotingPeriod(ctx context.Context, period *models.VotingPeriod) error
+	GetVotingPeriodByProposal(ctx context.Context, proposalID uint) (*models.VotingPeriod, error)
+	UpdateVotingPeriod(ctx context.Context, period *models.VotingPeriod) error
+	CreateVotingRights(ctx context.Context, rights *models.VotingRights) error
+	GetVotingRights(ctx context.Context, memberID, clubID uint) (*models.VotingRights, error)
+	CreateGovernancePolicy(ctx context.Context, policy *models.GovernancePolicy) error
+	GetActiveGovernancePolicies(ctx context.Context, clubID uint) ([]models.GovernancePolicy, error)
+	CreateOrUpdateVoteResult(ctx context.Context, result *models.VoteResult) error
+	GetVoteResult(ctx context.Context, proposalID uint) (*models.VoteResult, error)
+	HealthCheck(ctx context.Context) error
+}
 
 // Service handles business logic for governance
 type Service struct {
-	repo       *repository.Repository
+	repo       RepositoryInterface
 	logger     logging.Logger
 	messaging  messaging.MessageBus
-	monitoring *monitoring.Monitor
+	monitoring monitoring.MonitoringInterface
 }
 
 // NewService creates a new governance service
-func NewService(repo *repository.Repository, logger logging.Logger, messaging messaging.MessageBus, monitoring *monitoring.Monitor) *Service {
+func NewService(repo RepositoryInterface, logger logging.Logger, messaging messaging.MessageBus, monitoring monitoring.MonitoringInterface) *Service {
 	return &Service{
 		repo:       repo,
 		logger:     logger,

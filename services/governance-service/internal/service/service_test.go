@@ -2,13 +2,17 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"testing"
 	"time"
 
 	"gorm.io/gorm"
 
 	"reciprocal-clubs-backend/pkg/shared/logging"
+	"reciprocal-clubs-backend/pkg/shared/messaging"
+	"reciprocal-clubs-backend/pkg/shared/monitoring"
 	"reciprocal-clubs-backend/services/governance-service/internal/models"
 )
 
@@ -182,15 +186,52 @@ func (m *mockLogger) WithContext(ctx context.Context) logging.Logger { return m 
 
 type mockMessaging struct{}
 
-func (m *mockMessaging) Publish(ctx context.Context, topic string, message interface{}) error { return nil }
-func (m *mockMessaging) Subscribe(topic string, handler interface{}) error { return nil }
+func (m *mockMessaging) Publish(ctx context.Context, subject string, data interface{}) error { return nil }
+func (m *mockMessaging) PublishSync(ctx context.Context, subject string, data interface{}) error { return nil }
+func (m *mockMessaging) Subscribe(subject string, handler messaging.MessageHandler) error { return nil }
+func (m *mockMessaging) SubscribeQueue(subject, queue string, handler messaging.MessageHandler) error { return nil }
+func (m *mockMessaging) Request(ctx context.Context, subject string, data interface{}, response interface{}) error { return nil }
 func (m *mockMessaging) Close() error { return nil }
-func (m *mockMessaging) HealthCheck() error { return nil }
+func (m *mockMessaging) HealthCheck(ctx context.Context) error { return nil }
 
 type mockMonitoring struct{}
 
-func (m *mockMonitoring) RecordBusinessEvent(event, value string) {}
-func (m *mockMonitoring) RecordHTTPRequest(method, path string, status int, duration time.Duration) {}
+func (m *mockMonitoring) RecordHTTPRequest(method, endpoint string, statusCode int, duration time.Duration) {}
+func (m *mockMonitoring) RecordGRPCRequest(method, status string, duration time.Duration) {}
+func (m *mockMonitoring) RecordBusinessEvent(eventType, clubID string) {}
+func (m *mockMonitoring) RecordDatabaseConnections(count int) {}
+func (m *mockMonitoring) RecordActiveConnections(count int) {}
+func (m *mockMonitoring) RecordMessageReceived(subject string) {}
+func (m *mockMonitoring) RecordMessagePublished(subject string) {}
+func (m *mockMonitoring) RegisterHealthCheck(checker monitoring.HealthChecker) {}
+func (m *mockMonitoring) GetSystemHealth(ctx context.Context) *monitoring.SystemHealth {
+	return &monitoring.SystemHealth{
+		Status:  "healthy",
+		Service: "governance-service",
+	}
+}
+func (m *mockMonitoring) UpdateServiceUptime() {}
+func (m *mockMonitoring) GetMetricsHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("# Mock metrics\n"))
+	})
+}
+func (m *mockMonitoring) HealthCheckHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
+	}
+}
+func (m *mockMonitoring) ReadinessCheckHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"status": "ready"})
+	}
+}
 func (m *mockMonitoring) StartMetricsServer() {}
 
 
