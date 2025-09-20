@@ -122,7 +122,15 @@ func (suite *HTTPHandlerTestSuite) SetupTest() {
 	suite.mockService = new(MockAnalyticsService)
 	loggingConfig := &config.LoggingConfig{Level: "info", Format: "console", Output: "stdout"}
 	logger := logging.NewLogger(loggingConfig, "analytics-service-test")
-	monitor := monitoring.NewMonitor(monitoring.Config{ServiceName: "analytics-service-test"})
+	monitorConfig := &config.MonitoringConfig{
+		MetricsPath:   "",
+		MetricsPort:   0,
+		HealthPath:    "",
+		ReadinessPath: "",
+		EnableMetrics: false,
+		EnableTracing: false,
+	}
+	monitor := monitoring.NewMonitor(monitorConfig, logger, "analytics-service-test", "test-version")
 
 	suite.handler = NewHTTPHandler(suite.mockService, logger, monitor)
 	suite.router = suite.handler.SetupRoutes()
@@ -393,7 +401,15 @@ func TestHTTPHandler_EmptyQueryParams(t *testing.T) {
 	mockService := new(MockAnalyticsService)
 	loggingConfig := &config.LoggingConfig{Level: "info", Format: "console", Output: "stdout"}
 	logger := logging.NewLogger(loggingConfig, "analytics-service-test")
-	monitor := monitoring.NewMonitor(monitoring.Config{ServiceName: "test"})
+	monitoringConfig := &config.MonitoringConfig{
+		MetricsPath:   "",
+		MetricsPort:   0,
+		HealthPath:    "",
+		ReadinessPath: "",
+		EnableMetrics: false,
+		EnableTracing: false,
+	}
+	monitor := monitoring.NewMonitor(monitoringConfig, logger, "test", "test")
 	handler := NewHTTPHandler(mockService, logger, monitor)
 	router := handler.SetupRoutes()
 
@@ -414,7 +430,15 @@ func TestHTTPHandler_CORSHeaders(t *testing.T) {
 	mockService := new(MockAnalyticsService)
 	loggingConfig := &config.LoggingConfig{Level: "info", Format: "console", Output: "stdout"}
 	logger := logging.NewLogger(loggingConfig, "analytics-service-test")
-	monitor := monitoring.NewMonitor(monitoring.Config{ServiceName: "test"})
+	monitoringConfig := &config.MonitoringConfig{
+		MetricsPath:   "",
+		MetricsPort:   0,
+		HealthPath:    "",
+		ReadinessPath: "",
+		EnableMetrics: false,
+		EnableTracing: false,
+	}
+	monitor := monitoring.NewMonitor(monitoringConfig, logger, "test", "test")
 	handler := NewHTTPHandler(mockService, logger, monitor)
 	router := handler.SetupRoutes()
 
@@ -435,7 +459,15 @@ func BenchmarkHTTPHandler_GetMetrics(b *testing.B) {
 	mockService := new(MockAnalyticsService)
 	loggingConfig := &config.LoggingConfig{Level: "error", Format: "console", Output: "stdout"}
 	logger := logging.NewLogger(loggingConfig, "analytics-service-bench")
-	monitor := monitoring.NewMonitor(monitoring.Config{ServiceName: "test"})
+	monitoringConfig := &config.MonitoringConfig{
+		MetricsPath:   "",
+		MetricsPort:   0,
+		HealthPath:    "",
+		ReadinessPath: "",
+		EnableMetrics: false,
+		EnableTracing: false,
+	}
+	monitor := monitoring.NewMonitor(monitoringConfig, logger, "test", "test")
 	handler := NewHTTPHandler(mockService, logger, monitor)
 	router := handler.SetupRoutes()
 
@@ -456,7 +488,15 @@ func BenchmarkHTTPHandler_RecordEvent(b *testing.B) {
 	mockService := new(MockAnalyticsService)
 	loggingConfig := &config.LoggingConfig{Level: "error", Format: "console", Output: "stdout"}
 	logger := logging.NewLogger(loggingConfig, "analytics-service-bench")
-	monitor := monitoring.NewMonitor(monitoring.Config{ServiceName: "test"})
+	monitoringConfig := &config.MonitoringConfig{
+		MetricsPath:   "",
+		MetricsPort:   0,
+		HealthPath:    "",
+		ReadinessPath: "",
+		EnableMetrics: false,
+		EnableTracing: false,
+	}
+	monitor := monitoring.NewMonitor(monitoringConfig, logger, "test", "test")
 	handler := NewHTTPHandler(mockService, logger, monitor)
 	router := handler.SetupRoutes()
 

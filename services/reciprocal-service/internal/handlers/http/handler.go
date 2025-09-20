@@ -15,13 +15,13 @@ import (
 
 // HTTPHandler handles HTTP requests for reciprocal service
 type HTTPHandler struct {
-	service    *service.ReciprocalService
+	service    service.ReciprocalServiceInterface
 	logger     logging.Logger
-	monitoring *monitoring.Monitor
+	monitoring monitoring.MonitoringInterface
 }
 
 // NewHTTPHandler creates a new HTTP handler
-func NewHTTPHandler(service *service.ReciprocalService, logger logging.Logger, monitoring *monitoring.Monitor) *HTTPHandler {
+func NewHTTPHandler(service service.ReciprocalServiceInterface, logger logging.Logger, monitoring monitoring.MonitoringInterface) *HTTPHandler {
 	return &HTTPHandler{
 		service:    service,
 		logger:     logger,

@@ -22,6 +22,7 @@ func (m *mockLogger) Warn(msg string, fields map[string]interface{})  {}
 func (m *mockLogger) Error(msg string, fields map[string]interface{}) {}
 func (m *mockLogger) Fatal(msg string, fields map[string]interface{}) {}
 func (m *mockLogger) With(fields map[string]interface{}) logging.Logger { return m }
+func (m *mockLogger) WithContext(ctx context.Context) logging.Logger { return m }
 
 // Setup test database
 func setupTestDB(t *testing.T) *gorm.DB {

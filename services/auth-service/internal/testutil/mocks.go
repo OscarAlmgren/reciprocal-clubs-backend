@@ -3,12 +3,14 @@ package testutil
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
 	"reciprocal-clubs-backend/pkg/shared/config"
 	"reciprocal-clubs-backend/pkg/shared/logging"
 	"reciprocal-clubs-backend/pkg/shared/messaging"
+	"reciprocal-clubs-backend/pkg/shared/monitoring"
 	"reciprocal-clubs-backend/services/auth-service/internal/hanko"
 )
 
@@ -83,7 +85,7 @@ func (m *MockLogger) Clear() {
 	m.logs = m.logs[:0]
 }
 
-// MockMonitor implements the monitoring.Monitor interface for testing
+// MockMonitor implements the monitoring.MonitoringInterface for testing
 type MockMonitor struct {
 	metrics map[string]float64
 	mu      sync.RWMutex
@@ -95,6 +97,73 @@ func NewMockMonitor() *MockMonitor {
 	}
 }
 
+// MonitoringInterface implementation
+func (m *MockMonitor) RecordHTTPRequest(method, endpoint string, statusCode int, duration time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := fmt.Sprintf("http_%s_%s_%d", method, endpoint, statusCode)
+	m.metrics[key] = duration.Seconds()
+}
+
+func (m *MockMonitor) RecordGRPCRequest(method, status string, duration time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := fmt.Sprintf("grpc_%s_%s", method, status)
+	m.metrics[key] = duration.Seconds()
+}
+
+func (m *MockMonitor) RecordBusinessEvent(eventType, clubID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := fmt.Sprintf("business_%s_%s", eventType, clubID)
+	m.metrics[key]++
+}
+
+func (m *MockMonitor) RecordDatabaseConnections(count int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.metrics["db_connections"] = float64(count)
+}
+
+func (m *MockMonitor) RecordActiveConnections(count int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.metrics["active_connections"] = float64(count)
+}
+
+func (m *MockMonitor) RecordMessageReceived(subject string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := fmt.Sprintf("msg_received_%s", subject)
+	m.metrics[key]++
+}
+
+func (m *MockMonitor) RecordMessagePublished(subject string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := fmt.Sprintf("msg_published_%s", subject)
+	m.metrics[key]++
+}
+
+func (m *MockMonitor) RegisterHealthCheck(checker monitoring.HealthChecker) {
+	// Mock implementation - no-op
+}
+
+func (m *MockMonitor) GetSystemHealth(ctx context.Context) *monitoring.SystemHealth {
+	// Mock implementation - return nil for testing
+	return nil
+}
+
+func (m *MockMonitor) UpdateServiceUptime() {
+	// Mock implementation - no-op
+}
+
+func (m *MockMonitor) GetMetricsHandler() http.Handler {
+	// Mock implementation - return nil for testing
+	return nil
+}
+
+// Legacy test helper methods
 func (m *MockMonitor) IncrementCounter(name string, labels map[string]string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

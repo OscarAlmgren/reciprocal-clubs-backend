@@ -9,12 +9,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"reciprocal-clubs-backend/pkg/shared/config"
 	"reciprocal-clubs-backend/pkg/shared/logging"
 	"reciprocal-clubs-backend/pkg/shared/monitoring"
-	"reciprocal-clubs-backend/services/analytics-service/internal/service"
 	pb "reciprocal-clubs-backend/services/analytics-service/proto"
 )
 

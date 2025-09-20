@@ -12,19 +12,50 @@ import (
 	"reciprocal-clubs-backend/pkg/shared/messaging"
 	"reciprocal-clubs-backend/pkg/shared/monitoring"
 	"reciprocal-clubs-backend/services/reciprocal-service/internal/models"
-	"reciprocal-clubs-backend/services/reciprocal-service/internal/repository"
 )
+
+// ReciprocalServiceInterface defines the interface for reciprocal service operations
+type ReciprocalServiceInterface interface {
+	CreateAgreement(ctx context.Context, req *CreateAgreementRequest) (*models.Agreement, error)
+	GetAgreementByID(ctx context.Context, id uint) (*models.Agreement, error)
+	GetAgreementsByClub(ctx context.Context, clubID uint) ([]models.Agreement, error)
+	UpdateAgreementStatus(ctx context.Context, id uint, newStatus string, reviewedByID string) (*models.Agreement, error)
+	RequestVisit(ctx context.Context, req *RequestVisitRequest) (*models.Visit, error)
+	GetVisitByID(ctx context.Context, id uint) (*models.Visit, error)
+	ConfirmVisit(ctx context.Context, id uint, confirmedByID string) (*models.Visit, error)
+	CheckInVisit(ctx context.Context, verificationCode string) (*models.Visit, error)
+	CheckOutVisit(ctx context.Context, verificationCode string, actualCost *float64) (*models.Visit, error)
+	GetMemberVisits(ctx context.Context, memberID uint, limit, offset int) ([]models.Visit, error)
+	GetClubVisits(ctx context.Context, clubID uint, limit, offset int) ([]models.Visit, error)
+	GetMemberVisitStats(ctx context.Context, memberID uint, clubID uint, year int, month int) (*models.VisitStats, error)
+}
+
+// RepositoryInterface defines the interface for repository operations
+type RepositoryInterface interface {
+	CreateAgreement(ctx context.Context, agreement *models.Agreement) error
+	GetAgreementByID(ctx context.Context, id uint) (*models.Agreement, error)
+	GetAgreementsByClub(ctx context.Context, clubID uint) ([]models.Agreement, error)
+	UpdateAgreement(ctx context.Context, agreement *models.Agreement) error
+	CreateVisit(ctx context.Context, visit *models.Visit) error
+	GetVisitByID(ctx context.Context, id uint) (*models.Visit, error)
+	GetVisitByVerificationCode(ctx context.Context, code string) (*models.Visit, error)
+	GetVisitsByMember(ctx context.Context, memberID uint, limit, offset int) ([]models.Visit, error)
+	GetVisitsByClub(ctx context.Context, clubID uint, limit, offset int) ([]models.Visit, error)
+	UpdateVisit(ctx context.Context, visit *models.Visit) error
+	GetMemberVisitStats(ctx context.Context, memberID uint, clubID uint, year int, month int) (*models.VisitStats, error)
+	GetActiveRestrictionsForMember(ctx context.Context, memberID uint, agreementID uint) ([]models.VisitRestriction, error)
+}
 
 // ReciprocalService handles business logic for reciprocal agreements and visits
 type ReciprocalService struct {
-	repo       *repository.Repository
+	repo       RepositoryInterface
 	logger     logging.Logger
 	messaging  messaging.MessageBus
-	monitoring *monitoring.Monitor
+	monitoring monitoring.MonitoringInterface
 }
 
 // NewReciprocalService creates a new reciprocal service
-func NewReciprocalService(repo *repository.Repository, logger logging.Logger, messaging messaging.MessageBus, monitoring *monitoring.Monitor) *ReciprocalService {
+func NewReciprocalService(repo RepositoryInterface, logger logging.Logger, messaging messaging.MessageBus, monitoring monitoring.MonitoringInterface) *ReciprocalService {
 	return &ReciprocalService{
 		repo:       repo,
 		logger:     logger,
@@ -32,6 +63,9 @@ func NewReciprocalService(repo *repository.Repository, logger logging.Logger, me
 		monitoring: monitoring,
 	}
 }
+
+// Ensure ReciprocalService implements ReciprocalServiceInterface
+var _ ReciprocalServiceInterface = (*ReciprocalService)(nil)
 
 // Agreement operations
 

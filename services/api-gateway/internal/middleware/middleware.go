@@ -75,19 +75,20 @@ func (rw *responseWriter) WriteHeader(statusCode int) {
 	if !rw.written {
 		rw.statusCode = statusCode
 		rw.written = true
+		rw.ResponseWriter.WriteHeader(statusCode)
 	}
-	rw.ResponseWriter.WriteHeader(statusCode)
 }
 
 func (rw *responseWriter) Write(data []byte) (int, error) {
 	if !rw.written {
-		rw.WriteHeader(http.StatusOK)
+		rw.statusCode = http.StatusOK
+		rw.written = true
 	}
 	return rw.ResponseWriter.Write(data)
 }
 
 // MetricsMiddleware records HTTP metrics
-func MetricsMiddleware(monitor *monitoring.Monitor) func(http.Handler) http.Handler {
+func MetricsMiddleware(monitor monitoring.MonitoringInterface) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()

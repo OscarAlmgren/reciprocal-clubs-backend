@@ -3,27 +3,15 @@ package service
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
+	"reciprocal-clubs-backend/pkg/shared/logging"
+	"reciprocal-clubs-backend/pkg/shared/messaging"
+	"reciprocal-clubs-backend/pkg/shared/monitoring"
 	"reciprocal-clubs-backend/services/reciprocal-service/internal/models"
 )
-
-// Mock repository interface
-type MockRepository interface {
-	CreateAgreement(ctx context.Context, agreement *models.Agreement) error
-	GetAgreementByID(ctx context.Context, id uint) (*models.Agreement, error)
-	GetAgreementsByClub(ctx context.Context, clubID uint) ([]models.Agreement, error)
-	UpdateAgreement(ctx context.Context, agreement *models.Agreement) error
-	CreateVisit(ctx context.Context, visit *models.Visit) error
-	GetVisitByID(ctx context.Context, id uint) (*models.Visit, error)
-	GetVisitByVerificationCode(ctx context.Context, code string) (*models.Visit, error)
-	GetVisitsByMember(ctx context.Context, memberID uint, limit, offset int) ([]models.Visit, error)
-	GetVisitsByClub(ctx context.Context, clubID uint, limit, offset int) ([]models.Visit, error)
-	UpdateVisit(ctx context.Context, visit *models.Visit) error
-	GetMemberVisitStats(ctx context.Context, memberID uint, clubID uint, year int, month int) (*models.VisitStats, error)
-	GetActiveRestrictionsForMember(ctx context.Context, memberID uint, agreementID uint) ([]models.VisitRestriction, error)
-}
 
 // Mock repository for testing
 type mockRepository struct {
@@ -204,16 +192,29 @@ func (m *mockLogger) Info(msg string, fields map[string]interface{})  {}
 func (m *mockLogger) Warn(msg string, fields map[string]interface{})  {}
 func (m *mockLogger) Error(msg string, fields map[string]interface{}) {}
 func (m *mockLogger) Fatal(msg string, fields map[string]interface{}) {}
-func (m *mockLogger) With(fields map[string]interface{}) interface{} { return m }
+func (m *mockLogger) With(fields map[string]interface{}) logging.Logger { return m }
+func (m *mockLogger) WithContext(ctx context.Context) logging.Logger { return m }
 
 // Mock messaging
 type mockMessaging struct{}
 
-func (m *mockMessaging) Publish(ctx context.Context, subject string, data []byte) error {
+func (m *mockMessaging) Publish(ctx context.Context, subject string, data interface{}) error {
 	return nil
 }
 
-func (m *mockMessaging) Subscribe(subject string, handler func([]byte)) error {
+func (m *mockMessaging) PublishSync(ctx context.Context, subject string, data interface{}) error {
+	return nil
+}
+
+func (m *mockMessaging) Subscribe(subject string, handler messaging.MessageHandler) error {
+	return nil
+}
+
+func (m *mockMessaging) SubscribeQueue(subject, queue string, handler messaging.MessageHandler) error {
+	return nil
+}
+
+func (m *mockMessaging) Request(ctx context.Context, subject string, data interface{}, response interface{}) error {
 	return nil
 }
 
@@ -221,15 +222,24 @@ func (m *mockMessaging) Close() error {
 	return nil
 }
 
-func (m *mockMessaging) HealthCheck() error {
+func (m *mockMessaging) HealthCheck(ctx context.Context) error {
 	return nil
 }
 
 // Mock monitoring
 type mockMonitoring struct{}
 
-func (m *mockMonitoring) RecordBusinessEvent(event, value string) {}
-func (m *mockMonitoring) RecordHTTPRequest(method, path string, statusCode int, duration time.Duration) {}
+func (m *mockMonitoring) RecordHTTPRequest(method, endpoint string, statusCode int, duration time.Duration) {}
+func (m *mockMonitoring) RecordGRPCRequest(method, status string, duration time.Duration) {}
+func (m *mockMonitoring) RecordBusinessEvent(eventType, clubID string) {}
+func (m *mockMonitoring) RecordDatabaseConnections(count int) {}
+func (m *mockMonitoring) RecordActiveConnections(count int) {}
+func (m *mockMonitoring) RecordMessageReceived(subject string) {}
+func (m *mockMonitoring) RecordMessagePublished(subject string) {}
+func (m *mockMonitoring) RegisterHealthCheck(checker monitoring.HealthChecker) {}
+func (m *mockMonitoring) GetSystemHealth(ctx context.Context) *monitoring.SystemHealth { return nil }
+func (m *mockMonitoring) UpdateServiceUptime() {}
+func (m *mockMonitoring) GetMetricsHandler() http.Handler { return nil }
 
 // Test helper to create service with mocks
 func createTestService() (*ReciprocalService, *mockRepository) {
@@ -483,8 +493,16 @@ func TestReciprocalService_CheckOutVisit(t *testing.T) {
 	})
 
 	t.Run("check out without actual cost", func(t *testing.T) {
-		visit.Status = models.VisitStatusCheckedIn // reset
-		updated, err := service.CheckOutVisit(ctx, "test-code-123", nil)
+		// Create a fresh visit to avoid state pollution from previous test
+		cleanVisit := &models.Visit{
+			ID:               2,
+			Status:           models.VisitStatusCheckedIn,
+			VerificationCode: "test-code-456",
+			CheckInTime:      &checkInTime,
+		}
+		repo.visits[2] = cleanVisit
+
+		updated, err := service.CheckOutVisit(ctx, "test-code-456", nil)
 		if err != nil {
 			t.Errorf("CheckOutVisit() error = %v, want nil", err)
 			return

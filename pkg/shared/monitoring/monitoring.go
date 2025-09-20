@@ -367,3 +367,13 @@ func (m *Monitor) CheckHealth(ctx context.Context) *SystemHealth {
 
 	return health
 }
+
+// GetSystemHealth returns the current system health status
+func (m *Monitor) GetSystemHealth(ctx context.Context) *SystemHealth {
+	return m.CheckHealth(ctx)
+}
+
+// GetMetricsHandler returns the HTTP handler for metrics endpoint
+func (m *Monitor) GetMetricsHandler() http.Handler {
+	return promhttp.HandlerFor(m.metrics.registry, promhttp.HandlerOpts{})
+}
